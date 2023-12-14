@@ -1,0 +1,28 @@
+```{r}
+library("arrow")
+library("dplyr")
+```
+
+```{r}
+dataset <- read.csv("./dataset/cleaned_data.csv")
+```
+
+```{r}
+head(dataset)
+str(dataset)
+summary(dataset)
+```
+
+```{r}
+dataset |> select(where(~ any(is.na(.)))) |> mutate(across(where(is.character), as.factor)) |> summary()
+na_counts <- tibble(
+  column = names(dataset),
+  na_count = colSums(is.na(dataset))
+)
+
+na_counts <- na_counts[na_counts$na_count > 0, ]
+
+arrange(na_counts, desc(na_count))
+```
+
+
