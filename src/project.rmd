@@ -7,6 +7,7 @@ library("rpart")
 library("statebins")
 library("tidygeocoder")
 library("leaflet")
+library("gridExtra")
 ```
 
 ```{r load_dataset}
@@ -25,16 +26,29 @@ Checking NA's
 na_df <- df |>
   select(where(~ any(is.na(.) | . == ""))) |>
   mutate(across(where(is.character), ~ ifelse(. == "", NA, .))) |>
-  mutate(across(where(is.character), as.factor))
-print(
-  tibble(
-    column = names(na_df),
-    na_count = colSums(is.na(na_df))
-  ) |>
-    filter(na_count > 0) |>
-    arrange(desc(na_count)),
-  n = 50
-)
+  mutate(across(where(is.character), as.factor)) %>%
+  {
+    tibble(column = names(.), na_count = colSums(is.na(.)))
+  } |>
+  filter(na_count > 0) |>
+  arrange(desc(na_count))
+
+ggplot(na_df, aes(x = column, y = na_count)) +
+  geom_bar(
+    stat = "identity",
+    fill = "skyblue",
+    position = "dodge"
+  ) +
+  labs(title = "NA Counts for Each Column") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90),
+    axis.text.y = element_text(hjust = 1),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    plot.title = element_text(hjust = 0.5)
+  ) +
+  coord_flip()
 ```
 
 Checking outliers
@@ -43,7 +57,7 @@ Checking outliers
 numeric_cols <- sapply(df, is.numeric)
 
 # Create histograms for numeric columns on separate pages
-par(mfcol = c(1, 1))  # Reset layout to default
+par(mfcol = c(1, 1)) # Reset layout to default
 
 for (col in names(df[, numeric_cols, drop = FALSE])) {
   hist(df[[col]], main = col, xlab = col, col = "lightblue", border = "black")
@@ -59,13 +73,6 @@ Good practice to remove duplicated rows before oversampling ! DO IT AFTER APLYIN
 ```{r distinct_removal}
 df <- unique(df)
 cat("Removed", sum(duplicated(df)), "duplicated observations")
-```
-
-```{r}
-(unique(df$SmokerStatus))
-(unique(df$ECigaretteUsage))
-length(df$SmokerStatus[df$SmokerStatus == ""])
-length(df$ECigaretteUsage[df$ECigaretteUsage == ""])
 ```
 
 ```{r states_map_final}
@@ -121,7 +128,7 @@ statebins(
     panel.border = element_blank(),
     panel.background = element_blank(),
     axis.line = element_blank(),
-    plot.title = element_text(hjust = 0.5) # Center the title
+    plot.title = element_text(hjust = 0.5)
   )
 ```
 
@@ -136,26 +143,34 @@ for (col in bool_cols) {
 ```
 
 Now we can use all the data in the dataset to predict the height and the weight
+```{r fixing_weigh_weight_bmi}
+weight_model <- rpart(WeightInKilograms ~ ., data = df, method = "anova")
+height_model <- rpart(HeightInMeters ~ ., data = df, method = "anova")
+
+# Predict WeightInKilograms for NA values
+df$WeightInKilograms[is.na(df$WeightInKilograms)] <- predict(weight_model, newdata = df[is.na(df$WeightInKilograms), ])
+
+# Predict HeightInMeters for NA values
+df$HeightInMeters[is.na(df$HeightInMeters)] <- predict(height_model, newdata = df[is.na(df$HeightInMeters), ])
+```
+
+After predicting the values the BMI that were NA can be calculated and the `WeightInKilograms` and `HeightInMeters` are redundant and can be removed.
 ```{r}
-# weight_model <- rpart(WeightInKilograms ~ ., data = df, method = "anova")
-# height_model <- rpart(HeightInMeters ~ ., data = df, method = "anova")
+df$BMI <- df$WeightInKilograms / (df$HeightInMeters^2)
 
-# # Predict WeightInKilograms for NA values
-# df$WeightInKilograms[is.na(df$WeightInKilograms)] <- predict(weight_model, newdata = df[is.na(df$WeightInKilograms), ])
+# DEBUG
+df |>
+  select(where(~ any(is.na(.)))) |>
+  mutate(across(where(is.character), as.factor)) |>
+  summary()
 
-# # Predict HeightInMeters for NA values
-# df$HeightInMeters[is.na(df$HeightInMeters)] <- predict(height_model, newdata = df[is.na(df$HeightInMeters), ])
-# ```
+df <- df |> select(-WeightInKilograms, -HeightInMeters)
+```
 
-# After predicting the values the BMI that were NA can be calculated and the `WeightInKilograms` and `HeightInMeters` are redundant and can be removed.
-# ```{r}
-# df$BMI <- df$WeightInKilograms / (df$HeightInMeters^2)
+```{r}
+bmi_categories <- c("Underweight", "Normal Weight", "Overweight", "Obese", "Extremely Obese")
+bmi_ranges <- c(0, 18.5, 24.9, 29.9, 34.9, Inf)
 
-# # DEBUG
-# df |>
-#   select(where(~ any(is.na(.)))) |>
-#   mutate(across(where(is.character), as.factor)) |>
-#   summary()
-
-# df <- df |> select(-WeightInKilograms, -HeightInMeters)
+# Create a new column "BMICategory" based on BMI ranges
+df$BMI <- cut(df$BMI, breaks = bmi_ranges, labels = bmi_categories, include.lowest = TRUE)
 ```
