@@ -8,10 +8,13 @@ help:
 	@Write-Host "  clean     : Run the clean script on the data"
 
 merge:
-  @python ./data/merge.py
+  @cd data
+  @python ./merge.py
 
 shard:
-  @python ./data/shard.py
+  @cd data
+  @python ./shard.py
 
 clean:
-  @python ./data/clean.py
+  @cd data
+  @python ./clean.py
