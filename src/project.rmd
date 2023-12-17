@@ -1,0 +1,161 @@
+```{r libraries}
+library("dplyr")
+library("ggplot2")
+library("here")
+library("purrr")
+library("rpart")
+library("statebins")
+library("tidygeocoder")
+library("leaflet")
+```
+
+```{r load_dataset}
+df <- read.csv(here("data", "heart_data.csv"))
+```
+
+```{r dataset_summary}
+head(df)
+str(df)
+summary(df)
+```
+
+Checking NA's
+
+```{r na_count}
+na_df <- df |>
+  select(where(~ any(is.na(.) | . == ""))) |>
+  mutate(across(where(is.character), ~ ifelse(. == "", NA, .))) |>
+  mutate(across(where(is.character), as.factor))
+print(
+  tibble(
+    column = names(na_df),
+    na_count = colSums(is.na(na_df))
+  ) |>
+    filter(na_count > 0) |>
+    arrange(desc(na_count)),
+  n = 50
+)
+```
+
+Checking outliers
+
+```{r}
+numeric_cols <- sapply(df, is.numeric)
+
+# Create histograms for numeric columns on separate pages
+par(mfcol = c(1, 1))  # Reset layout to default
+
+for (col in names(df[, numeric_cols, drop = FALSE])) {
+  hist(df[[col]], main = col, xlab = col, col = "lightblue", border = "black")
+}
+```
+
+```{r remove_values}
+df <- df |> select(-RemovedTeeth)
+```
+
+Good practice to remove duplicated rows before oversampling ! DO IT AFTER APLYING FEATURE ENGINEERING AND WHATNOT
+
+```{r distinct_removal}
+df <- unique(df)
+cat("Removed", sum(duplicated(df)), "duplicated observations")
+```
+
+```{r}
+(unique(df$SmokerStatus))
+(unique(df$ECigaretteUsage))
+length(df$SmokerStatus[df$SmokerStatus == ""])
+length(df$ECigaretteUsage[df$ECigaretteUsage == ""])
+```
+
+```{r states_map_final}
+# geocoded_data <- tibble(State = unique(df$State)) |> geocode("State")
+#
+# obs_counts <- table(df$State)
+# # Add the Obs column to the geocoded_data
+# geocoded_data$Obs <- obs_counts[match(geocoded_data$State, names(obs_counts))]
+#
+# # Merge latitude and longitude information into your_data
+# map <- leaflet(data = geocoded_data) |>
+#   addTiles() |>
+#   addMarkers(
+#     lng = ~long,
+#     lat = ~lat,
+#     popup = ~ paste("Number of observations: ", Obs)
+#   ) |>
+#   addLegend("bottomright", colors = "blue", labels = "Data Points")
+#
+# # Display the map
+# map
+```
+
+```{r states_map_presentation, warning=FALSE}
+state_counts <- table(df$State)
+
+# Merge the counts with the original data
+df_with_counts <- merge(
+  df,
+  data.frame(
+    State = names(state_counts),
+    Count = as.numeric(state_counts)
+  ),
+  by = "State",
+  all.x = TRUE
+)
+
+# Plot the choropleth map using statebins_continuous
+statebins(
+  state_data = df_with_counts,
+  state_col = "State",
+  value_col = "Count"
+) +
+  labs(title = "Number of Observations in Each State") +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_blank(),
+    plot.title = element_text(hjust = 0.5) # Center the title
+  )
+```
+
+```{r boolean_var_trans}
+bool_cols <- df |>
+  select(where(~ any(. %in% c("Yes", "No")))) |>
+  colnames()
+
+for (col in bool_cols) {
+  df[[col]] <- ifelse(df[[col]] == "No", 0, 1)
+}
+```
+
+Now we can use all the data in the dataset to predict the height and the weight
+```{r}
+# weight_model <- rpart(WeightInKilograms ~ ., data = df, method = "anova")
+# height_model <- rpart(HeightInMeters ~ ., data = df, method = "anova")
+
+# # Predict WeightInKilograms for NA values
+# df$WeightInKilograms[is.na(df$WeightInKilograms)] <- predict(weight_model, newdata = df[is.na(df$WeightInKilograms), ])
+
+# # Predict HeightInMeters for NA values
+# df$HeightInMeters[is.na(df$HeightInMeters)] <- predict(height_model, newdata = df[is.na(df$HeightInMeters), ])
+# ```
+
+# After predicting the values the BMI that were NA can be calculated and the `WeightInKilograms` and `HeightInMeters` are redundant and can be removed.
+# ```{r}
+# df$BMI <- df$WeightInKilograms / (df$HeightInMeters^2)
+
+# # DEBUG
+# df |>
+#   select(where(~ any(is.na(.)))) |>
+#   mutate(across(where(is.character), as.factor)) |>
+#   summary()
+
+# df <- df |> select(-WeightInKilograms, -HeightInMeters)
+```
