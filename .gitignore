@@ -53,3 +53,6 @@ examples
 
 # original dataset > 100 MB
 data/heart_data*
+
+# Compiled files
+*.html
