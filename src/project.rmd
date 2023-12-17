@@ -173,4 +173,9 @@ bmi_ranges <- c(0, 18.5, 24.9, 29.9, 34.9, Inf)
 
 # Create a new column "BMICategory" based on BMI ranges
 df$BMI <- cut(df$BMI, breaks = bmi_ranges, labels = bmi_categories, include.lowest = TRUE)
+
+ggplot(df, aes(x = BMI, y = HIVTesting)) +
+  geom_boxplot() +
+  labs(title = paste("Box Plot of", "HIVTesting", "by BMI")) +
+  theme_minimal()
 ```
