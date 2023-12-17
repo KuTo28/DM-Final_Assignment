@@ -47,3 +47,9 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+#
+examples
+
+# original dataset > 100 MB
+data/heart_data*
