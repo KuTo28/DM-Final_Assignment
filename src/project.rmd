@@ -8,15 +8,17 @@
 ## Setup
 
 ```{r libraries}
-library("dplyr")
-library("ggplot2")
-library("here")
-library("purrr")
-library("rpart")
-library("statebins")
-library("tidygeocoder")
-library("leaflet")
-library("gridExtra")
+library(dplyr)
+library(ggplot2)
+library(here)
+library(purrr)
+library(rpart)
+library(statebins)
+library(tidygeocoder)
+library(leaflet)
+library(gridExtra)
+library(GGally)
+library(stringr)
 ```
 
 ```{r load_dataset}
@@ -173,7 +175,30 @@ ggplot(df, aes(x = BMI)) +
   )
 ```
 
+#### Tetanus
+
 ```{r}
+df <- df |>
+  mutate(
+    TetanusVaccinated = ifelse(str_detect(TetanusLast10Tdap, "^Yes"), 1, 0)
+  )
+
+df <- df |> select(-TetanusLast10Tdap)
+```
+
+#### Smoker
+
+```{r}
+unique(df$SmokerStatus)
+
+df <- df |>
+  mutate(
+    HasSmoked = ifelse(str_detect(SmokerStatus, "smoker"), 1, 0)
+  )
+
+df <- df |> select(-SmokerStatus)
+
+unique(df$HasSmoked)
 ```
 #### Yes/No
 
@@ -187,6 +212,37 @@ for (col in bool_cols) {
 }
 ```
 
+#### Difficulties
+
+```{r}
+# DEBUG
+corr_df <- na.omit(df)
+(corr_df %>% select(contains("Difficulty")) |> colnames())
+
+ggcorr(
+  corr_df %>% select(contains("Difficulty")),
+  label = TRUE,
+  label_round = 2,
+  hjust = 0.75,
+  angle = -45
+)
+```
+
+!TO_FORMAL They are very correlated, so just summ them up to account for multiple difficulties at the same time
+
+```{r}
+df <- df %>%
+  mutate(
+    LifeDifficulties = rowSums(select(., contains("Difficulty"))),
+    across(contains("Difficulty"), ~NULL)
+  )
+```
+
+#### Factor
+
+```{r factors_to_num}
+df <- df |> mutate(across(where(is.factor), as.numeric))
+```
 ### Outlier elimination
 
 !TODO
@@ -218,6 +274,16 @@ cat("Removed", sum(duplicated(df)), "duplicated observations")
 
 
 ## Data visualization
+
+```{r}
+ggcorr(
+  df |> select(-where(is.factor)),
+  label = TRUE,
+  label_round = 2,
+  hjust = 0.75,
+  angle = -45
+)
+```
 
 ```{r states_map_final}
 # geocoded_data <- tibble(State = unique(df$State)) |> geocode("State")
