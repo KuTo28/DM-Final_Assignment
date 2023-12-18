@@ -180,7 +180,11 @@ ggplot(df, aes(x = BMI)) +
 ```{r}
 df <- df |>
   mutate(
-    TetanusVaccinated = ifelse(str_detect(TetanusLast10Tdap, "^Yes"), 1, 0)
+    TetanusVaccinated = ifelse(
+      str_detect(TetanusLast10Tdap, "^Yes"),
+      "Yes",
+      "No"
+    )
   )
 
 df <- df |> select(-TetanusLast10Tdap)
@@ -193,13 +197,18 @@ unique(df$SmokerStatus)
 
 df <- df |>
   mutate(
-    HasSmoked = ifelse(str_detect(SmokerStatus, "smoker"), 1, 0)
+    HasSmoked = ifelse(
+      str_detect(SmokerStatus, "smoker") | str_detect(ECigaretteUsage, "^Use"),
+      "Yes",
+      "No"
+    )
   )
 
-df <- df |> select(-SmokerStatus)
+df <- df |> select(-SmokerStatus, -ECigaretteUsage)
 
 unique(df$HasSmoked)
 ```
+
 #### Yes/No
 
 ```{r boolean_map}
