@@ -177,7 +177,7 @@ ggplot(df, aes(x = BMI)) +
 
 #### Tetanus
 
-```{r}
+```{r tetanus_map}
 df <- df |>
   mutate(
     TetanusVaccinated = ifelse(
@@ -192,9 +192,7 @@ df <- df |> select(-TetanusLast10Tdap)
 
 #### Smoker
 
-```{r}
-unique(df$SmokerStatus)
-
+```{r smoking_map}
 df <- df |>
   mutate(
     HasSmoked = ifelse(
@@ -205,8 +203,40 @@ df <- df |>
   )
 
 df <- df |> select(-SmokerStatus, -ECigaretteUsage)
+```
 
-unique(df$HasSmoked)
+
+#### Race
+
+```{r}
+unique(df$RaceEthnicityCategory)
+# This is a mess to clean up
+```
+
+#### Last check time
+
+```{r last_check_time_map}
+df <- read.csv(here("data", "heart_data.csv"))
+df <- df |>
+  mutate(
+    YearsSinceCheckup = case_when(
+      LastCheckupTime == "Within past year (anytime less than 12 months ago)" ~ 1,
+      LastCheckupTime == "Within past 2 years (1 year but less than 2 years ago)" ~ 2,
+      LastCheckupTime == "Within past 5 years (2 years but less than 5 years ago)" ~ 5,
+      LastCheckupTime == "5 or more years ago" ~ 6,
+      AgeCategory == "" ~ 0,
+      TRUE ~ 0
+    ),
+    YearsSinceCheckup = ifelse(
+      YearsSinceCheckup == 0,
+      median(YearsSinceCheckup, na.rm = TRUE),
+      YearsSinceCheckup
+    )
+  )
+
+df <- df |> select(-LastCheckupTime)
+
+df |> count(YearsSinceCheckup)
 ```
 
 #### Yes/No
