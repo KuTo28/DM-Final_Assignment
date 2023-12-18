@@ -119,13 +119,32 @@ df <- df |>
       AgeCategory %in% c("Age 50 to 54", "Age 55 to 59", "Age 60 to 64") ~ "senior",
       AgeCategory %in% c("Age 65 to 69", "Age 70 to 74", "Age 75 to 79") ~ "old",
       AgeCategory %in% c("Age 80 or older") ~ "very old",
-      AgeCategory == "" ~ "Not known",
+      AgeCategory == "" ~ "not known",
       TRUE ~ AgeCategory
     )
-  )
+  ) |>
+  mutate(AgeCategory = factor(
+    AgeCategory,
+    levels = c("very young", "young", "mature", "senior", "old", "very old", "not known")
+  ))
 
 df |> count(AgeCategory)
+
+ggplot(df, aes(x = AgeCategory)) +
+  geom_bar(
+    stat = "count",
+    fill = "skyblue",
+    position = "dodge"
+  ) +
+  labs(title = "Age frequency distribution") +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    plot.title = element_text(hjust = 0.5)
+  )
 ```
+
 #### BMI
 
 ```{r BMI_bin}
