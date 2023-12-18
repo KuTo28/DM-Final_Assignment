@@ -100,6 +100,32 @@ df <- df |> select(-WeightInKilograms, -HeightInMeters)
 
 ### Variable recodifications
 
+#### Age
+
+- very young [0,25)
+- young [25,35)
+- mature [35,50)
+- senior [50,65)
+- old [65,80)
+- very old [80,inf)
+
+```{r age_bin}
+df <- df |>
+  mutate(
+    AgeCategory = case_when(
+      AgeCategory %in% c("Age 18 to 24") ~ "very young",
+      AgeCategory %in% c("Age 25 to 29", "Age 30 to 34") ~ "young",
+      AgeCategory %in% c("Age 35 to 39", "Age 40 to 44", "Age 45 to 49") ~ "mature",
+      AgeCategory %in% c("Age 50 to 54", "Age 55 to 59", "Age 60 to 64") ~ "senior",
+      AgeCategory %in% c("Age 65 to 69", "Age 70 to 74", "Age 75 to 79") ~ "old",
+      AgeCategory %in% c("Age 80 or older") ~ "very old",
+      AgeCategory == "" ~ "Not known",
+      TRUE ~ AgeCategory
+    )
+  )
+
+df |> count(AgeCategory)
+```
 #### BMI
 
 ```{r BMI_bin}
