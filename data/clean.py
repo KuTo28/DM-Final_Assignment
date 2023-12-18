@@ -1,5 +1,16 @@
-with open("./heart_data.csv", "r") as file:
+import sys
+
+if len(sys.argv) != 2:
+    print("This cli takes only one positional argument <file_path>")
+    exit(1)
+
+file_path = sys.argv[1]
+
+with open(file_path, "r") as file:
     lines = file.readlines()
+
+with open(f"{file_path}.bak", "w") as file:
+    file.write(lines)
 
 c_lines = [lines[0][:-1]]
 for line in lines[1:]:
@@ -8,5 +19,5 @@ for line in lines[1:]:
     cleaned_line = cleaned_line.replace('""', '"')
     c_lines.append(cleaned_line)
 
-with open("./clean_heart_data.csv", "w") as file:
+with open(file_path, "w") as file:
     file.write("\n".join(c_lines))

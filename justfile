@@ -1,20 +1,13 @@
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 
-help:
-	@Write-Host "Available targets:"
-	@Write-Host "  help      : Display this help message"
-	@Write-Host "  merge     : Run the merge script on the data"
-	@Write-Host "  shard     : Run the shard script on the data"
-	@Write-Host "  clean     : Run the clean script on the data"
+_:
+  @echo "Use just --list to see all available recipes"
 
-merge:
-  @cd data
-  @python ./merge.py
+merge shard_path:
+  @python ./data/merge.py {{shard_path}}
 
-shard:
-  @cd data
-  @python ./shard.py
+shard file_path n_shards:
+  @python ./data/shard.py {{file_path}} {{n_shards}}
 
-clean:
-  @cd data
-  @python ./clean.py
+clean file_path:
+  @python ./data/clean.py {{file_path}}
