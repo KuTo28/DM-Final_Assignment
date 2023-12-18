@@ -1,3 +1,12 @@
+
+
+
+## Introduction
+
+!TODO
+
+## Setup
+
 ```{r libraries}
 library("dplyr")
 library("ggplot2")
@@ -15,12 +24,22 @@ df <- read.csv(here("data", "heart_data.csv"))
 ```
 
 ```{r dataset_summary}
-head(df)
 str(df)
-summary(df)
 ```
 
-Checking NA's
+## Data analysis
+
+### Unimportant variables
+
+!TODO
+
+```{r remove_values}
+df <- df |> select(-RemovedTeeth)
+```
+
+### Non-numeric values
+
+!TODO
 
 ```{r na_count}
 na_df <- df |>
@@ -51,22 +70,79 @@ ggplot(na_df, aes(x = column, y = na_count)) +
   coord_flip()
 ```
 
-Checking outliers
+### Data generation
 
+Now we can use all the data in the dataset to predict the height and the weight
+```{r fixing_weigh_weight_bmi}
+weight_model <- rpart(WeightInKilograms ~ ., data = df, method = "anova")
+height_model <- rpart(HeightInMeters ~ ., data = df, method = "anova")
+
+# Predict WeightInKilograms for NA values
+df$WeightInKilograms[is.na(df$WeightInKilograms)] <- predict(weight_model, newdata = df[is.na(df$WeightInKilograms), ])
+
+# Predict HeightInMeters for NA values
+df$HeightInMeters[is.na(df$HeightInMeters)] <- predict(height_model, newdata = df[is.na(df$HeightInMeters), ])
+```
+
+After predicting the values the BMI that were NA can be calculated and the `WeightInKilograms` and `HeightInMeters` are redundant and can be removed.
 ```{r}
-numeric_cols <- sapply(df, is.numeric)
+df$BMI <- df$WeightInKilograms / (df$HeightInMeters^2)
 
-# Create histograms for numeric columns on separate pages
-par(mfcol = c(1, 1)) # Reset layout to default
+# DEBUG
+df |>
+  select(where(~ any(is.na(.)))) |>
+  mutate(across(where(is.character), as.factor)) |>
+  summary()
 
-for (col in names(df[, numeric_cols, drop = FALSE])) {
-  hist(df[[col]], main = col, xlab = col, col = "lightblue", border = "black")
+df <- df |> select(-WeightInKilograms, -HeightInMeters)
+```
+
+
+### Variable recodifications
+
+#### BMI
+
+```{r BMI_bin}
+# bmi_categories <- c("Underweight", "Normal Weight", "Overweight", "Obese", "Extremely Obese")
+# bmi_ranges <- c(0, 18.5, 24.9, 29.9, 34.9, Inf)
+#
+# # Create a new column "BMICategory" based on BMI ranges
+# df$BMI <- cut(df$BMI, breaks = bmi_ranges, labels = bmi_categories, include.lowest = TRUE)
+```
+
+#### Yes/No
+
+```{r boolean_map}
+bool_cols <- df |>
+  select(where(~ any(. %in% c("Yes", "No")))) |>
+  colnames()
+
+for (col in bool_cols) {
+  df[[col]] <- ifelse(df[[col]] == "No", 0, 1)
 }
 ```
 
-```{r remove_values}
-df <- df |> select(-RemovedTeeth)
+### Outlier elimination
+
+!TODO
+
+```{r outliers}
+z_score_mask <- function(vec) {
+  z_values <- abs((vec - mean(vec)) / sd(vec))
+
+  return(z_values > 3)
+}
+
+iqr_mask <- function(vec) {
+  q1 <- quantile(vec, .25, na.rm = TRUE)
+  q3 <- quantile(vec, .75, na.rm = TRUE)
+  iqr <- IQR(vec, na.rm = TRUE)
+
+  return(vec < (q1 - 1.5 * iqr) | vec > (q3 + 1.5 * iqr))
+}
 ```
+
+### Duplicated observations
 
 Good practice to remove duplicated rows before oversampling ! DO IT AFTER APLYING FEATURE ENGINEERING AND WHATNOT
 
@@ -74,6 +150,9 @@ Good practice to remove duplicated rows before oversampling ! DO IT AFTER APLYIN
 df <- unique(df)
 cat("Removed", sum(duplicated(df)), "duplicated observations")
 ```
+
+
+## Data visualization
 
 ```{r states_map_final}
 # geocoded_data <- tibble(State = unique(df$State)) |> geocode("State")
@@ -132,50 +211,14 @@ statebins(
   )
 ```
 
-```{r boolean_var_trans}
-bool_cols <- df |>
-  select(where(~ any(. %in% c("Yes", "No")))) |>
-  colnames()
 
-for (col in bool_cols) {
-  df[[col]] <- ifelse(df[[col]] == "No", 0, 1)
+```{r}
+numeric_cols <- sapply(df, is.numeric)
+
+# Create histograms for numeric columns on separate pages
+par(mfcol = c(1, 1)) # Reset layout to default
+
+for (col in names(df[, numeric_cols, drop = FALSE])) {
+  hist(df[[col]], main = col, xlab = col, col = "lightblue", border = "black")
 }
-```
-
-Now we can use all the data in the dataset to predict the height and the weight
-```{r fixing_weigh_weight_bmi}
-weight_model <- rpart(WeightInKilograms ~ ., data = df, method = "anova")
-height_model <- rpart(HeightInMeters ~ ., data = df, method = "anova")
-
-# Predict WeightInKilograms for NA values
-df$WeightInKilograms[is.na(df$WeightInKilograms)] <- predict(weight_model, newdata = df[is.na(df$WeightInKilograms), ])
-
-# Predict HeightInMeters for NA values
-df$HeightInMeters[is.na(df$HeightInMeters)] <- predict(height_model, newdata = df[is.na(df$HeightInMeters), ])
-```
-
-After predicting the values the BMI that were NA can be calculated and the `WeightInKilograms` and `HeightInMeters` are redundant and can be removed.
-```{r}
-df$BMI <- df$WeightInKilograms / (df$HeightInMeters^2)
-
-# DEBUG
-df |>
-  select(where(~ any(is.na(.)))) |>
-  mutate(across(where(is.character), as.factor)) |>
-  summary()
-
-df <- df |> select(-WeightInKilograms, -HeightInMeters)
-```
-
-```{r}
-bmi_categories <- c("Underweight", "Normal Weight", "Overweight", "Obese", "Extremely Obese")
-bmi_ranges <- c(0, 18.5, 24.9, 29.9, 34.9, Inf)
-
-# Create a new column "BMICategory" based on BMI ranges
-df$BMI <- cut(df$BMI, breaks = bmi_ranges, labels = bmi_categories, include.lowest = TRUE)
-
-ggplot(df, aes(x = BMI, y = HIVTesting)) +
-  geom_boxplot() +
-  labs(title = paste("Box Plot of", "HIVTesting", "by BMI")) +
-  theme_minimal()
 ```
