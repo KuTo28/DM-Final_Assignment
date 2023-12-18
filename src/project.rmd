@@ -148,13 +148,33 @@ ggplot(df, aes(x = AgeCategory)) +
 #### BMI
 
 ```{r BMI_bin}
-# bmi_categories <- c("Underweight", "Normal Weight", "Overweight", "Obese", "Extremely Obese")
-# bmi_ranges <- c(0, 18.5, 24.9, 29.9, 34.9, Inf)
-#
-# # Create a new column "BMICategory" based on BMI ranges
-# df$BMI <- cut(df$BMI, breaks = bmi_ranges, labels = bmi_categories, include.lowest = TRUE)
+bmi_categories <- c("Underweight", "Normal Weight", "Overweight", "Obese", "Extremely Obese")
+bmi_ranges <- c(0, 18.5, 24.9, 29.9, 34.9, Inf)
+
+df$BMI <- cut(
+  df$BMI,
+  breaks = bmi_ranges,
+  labels = bmi_categories,
+  include.lowest = TRUE
+)
+
+ggplot(df, aes(x = BMI)) +
+  geom_bar(
+    stat = "count",
+    fill = "skyblue",
+    position = "dodge"
+  ) +
+  labs(title = "BMI distribution") +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    plot.title = element_text(hjust = 0.5)
+  )
 ```
 
+```{r}
+```
 #### Yes/No
 
 ```{r boolean_map}
