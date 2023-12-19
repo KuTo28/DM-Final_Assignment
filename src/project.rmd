@@ -216,7 +216,6 @@ unique(df$RaceEthnicityCategory)
 #### Last check time
 
 ```{r last_check_time_map}
-df <- read.csv(here("data", "heart_data.csv"))
 df <- df |>
   mutate(
     YearsSinceCheckup = case_when(
@@ -282,6 +281,7 @@ df <- df %>%
 ```{r factors_to_num}
 df <- df |> mutate(across(where(is.factor), as.numeric))
 ```
+
 ### Outlier elimination
 
 !TODO
@@ -310,7 +310,6 @@ Good practice to remove duplicated rows before oversampling ! DO IT AFTER APLYIN
 df <- unique(df)
 cat("Removed", sum(duplicated(df)), "duplicated observations")
 ```
-
 
 ## Data visualization
 
@@ -345,6 +344,32 @@ ggcorr(
 # map
 ```
 
+```{r mean_BMI_per_state}
+# state_counts <- table(df$State)
+#
+# # Plot the choropleth map using statebins_continuous
+# statebins(
+#   state_data = df_with_counts,
+#   state_col = "State",
+#   value_col = "Count"
+# ) +
+#   labs(title = "Most common BMI per state") +
+#   theme_minimal() +
+#   theme(
+#     axis.title.x = element_blank(),
+#     axis.title.y = element_blank(),
+#     axis.text.x = element_blank(),
+#     axis.text.y = element_blank(),
+#     panel.grid.major = element_blank(),
+#     panel.grid.minor = element_blank(),
+#     panel.border = element_blank(),
+#     panel.background = element_blank(),
+#     axis.line = element_blank(),
+#     plot.title = element_text(hjust = 0.5)
+#   )
+#
+#
+```
 ```{r states_map_presentation, warning=FALSE}
 state_counts <- table(df$State)
 
