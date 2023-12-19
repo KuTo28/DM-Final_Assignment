@@ -378,14 +378,7 @@ sb <- statebins(
   state_col = "State",
   value_col = "HeartAttacks"
 ) +
-  labs(title = "Heart attack distribution per state")
-
-# https://stackoverflow.com/questions/76574854/how-to-add-count-labels-to-statebin-map
-sb <- ggplot_build(sb)
-sb$data[[2]]$label <- BMI_state$lab[match(sb$data[[2]]$label, BMI_state$StateAbb)]
-sb <- ggplot_gtable(sb)
-
-sb <- sb +
+  labs(title = "Heart attack distribution per state") +
   theme_void() +
   theme(
     axis.title.x = element_blank(),
@@ -402,12 +395,12 @@ sb <- sb +
     strip.background = element_blank()
   )
 
-plot(sb)
-```
+# https://stackoverflow.com/questions/76574854/how-to-add-count-labels-to-statebin-map
+sb <- ggplot_build(sb)
+sb$data[[2]]$label <- BMI_state$lab[match(sb$data[[2]]$label, BMI_state$StateAbb)]
+sb <- ggplot_gtable(sb)
 
-```{r}
-# sb = ggplot_build(sb)
-#
+plot(sb)
 ```
 
 ```{r states_map_presentation, warning=FALSE}
