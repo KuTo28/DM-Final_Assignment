@@ -378,7 +378,7 @@ sb <- statebins(
   state_col = "State",
   value_col = "HeartAttacks"
 ) +
-  labs(title = "Heart attack distribution per state") +
+  labs(title = "Heart attack distribution and BMI mean per state") +
   theme_void() +
   theme(
     axis.title.x = element_blank(),
