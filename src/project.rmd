@@ -63,7 +63,6 @@ ggplot(na_df, aes(x = column, y = na_count)) +
   labs(title = "NA Counts for Each Column") +
   theme_minimal() +
   theme(
-    axis.text.x = element_text(angle = 90),
     axis.text.y = element_text(hjust = 1),
     axis.title.x = element_blank(),
     axis.title.y = element_blank(),
@@ -90,6 +89,8 @@ After predicting the values the BMI that were NA can be calculated and the `Weig
 ```{r}
 df$BMI <- df$WeightInKilograms / (df$HeightInMeters^2)
 
+BMI_subset <- subset(df, select = c("State", "BMI", "HadHeartAttack"))
+BMI_subset$HadHeartAttack <- ifelse(BMI_subset$HadHeartAttack == "Yes", 1, 0)
 # DEBUG
 df |>
   select(where(~ any(is.na(.)))) |>
@@ -344,32 +345,71 @@ ggcorr(
 # map
 ```
 
-```{r mean_BMI_per_state}
-# state_counts <- table(df$State)
-#
-# # Plot the choropleth map using statebins_continuous
-# statebins(
-#   state_data = df_with_counts,
-#   state_col = "State",
-#   value_col = "Count"
-# ) +
-#   labs(title = "Most common BMI per state") +
-#   theme_minimal() +
-#   theme(
-#     axis.title.x = element_blank(),
-#     axis.title.y = element_blank(),
-#     axis.text.x = element_blank(),
-#     axis.text.y = element_blank(),
-#     panel.grid.major = element_blank(),
-#     panel.grid.minor = element_blank(),
-#     panel.border = element_blank(),
-#     panel.background = element_blank(),
-#     axis.line = element_blank(),
-#     plot.title = element_text(hjust = 0.5)
-#   )
-#
+```{r BMI_heart_attack_state}
+# Color to state the amount of heart attacks per state
+# number to say the BMI Of the state
+
+state_abbreviations <- c("DC", "GU", "PR", "VI")
+
+BMI_state <- BMI_subset |>
+  group_by(State) |>
+  summarize(
+    mean_BMI = mean(BMI, na.rm = TRUE),
+    HeartAttacks = sum(HadHeartAttack, na.rm = TRUE)
+  ) |>
+  arrange(State) |>
+  mutate(StateAbb = state.abb[match(State, state.name)]) |>
+  mutate(StateAbb = case_when(
+    State == "District of Columbia" ~ "DC",
+    State == "Guam" ~ "GU",
+    State == "Puerto Rico" ~ "PR",
+    State == "Virgin Islands" ~ "VI",
+    TRUE ~ StateAbb
+  ))
+
+BMI_state$lab <- paste(BMI_state$StateAbb, round(BMI_state$mean_BMI, 2), sep = "\n")
+
+
+BMI_state <- BMI_state |>
+  filter(State != "Guam")
+
+sb <- statebins(
+  state_data = BMI_state,
+  state_col = "State",
+  value_col = "HeartAttacks"
+) +
+  labs(title = "Heart attack distribution per state")
+
+# https://stackoverflow.com/questions/76574854/how-to-add-count-labels-to-statebin-map
+sb <- ggplot_build(sb)
+sb$data[[2]]$label <- BMI_state$lab[match(sb$data[[2]]$label, BMI_state$StateAbb)]
+sb <- ggplot_gtable(sb)
+
+sb <- sb +
+  theme_void() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_blank(),
+    plot.title = element_text(hjust = 0.5),
+    plot.background = element_blank(),
+    strip.background = element_blank()
+  )
+
+plot(sb)
+```
+
+```{r}
+# sb = ggplot_build(sb)
 #
 ```
+
 ```{r states_map_presentation, warning=FALSE}
 state_counts <- table(df$State)
 
@@ -416,4 +456,27 @@ par(mfcol = c(1, 1)) # Reset layout to default
 for (col in names(df[, numeric_cols, drop = FALSE])) {
   hist(df[[col]], main = col, xlab = col, col = "lightblue", border = "black")
 }
+```
+
+## Classifying
+
+```{r}
+set.seed(123)
+df_encoded <- df %>%
+  na.omit() %>%
+  mutate(across(where(is.character), as.factor))
+
+gender_colors <- c("Male" = "#27a7d8", "Female" = "#ff9a00")
+
+# Scatter plot with clusters
+ggplot(df_encoded, aes(x = BMI, color = Gender)) +
+  geom_jitter(aes(y = as.numeric(PhysicalHealthDays)), width = 0.1) +
+  scale_color_manual(values = gender_colors) +
+  labs(
+    title = "BMI vs. PhysicalHealthDays",
+    x = "BMI",
+    y = "Day"
+  ) +
+  theme_minimal() +
+  coord_flip()
 ```
