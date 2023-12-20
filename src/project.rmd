@@ -23,6 +23,9 @@ library(stringr)
 
 ```{r load_dataset}
 df <- read.csv(here("data", "heart_data.csv"))
+
+df[df == ""] <- NA
+df <- df |> mutate(across(is.character, as.factor))
 ```
 
 ```{r dataset_summary}
@@ -43,11 +46,9 @@ df <- df |> select(-RemovedTeeth)
 
 !TODO
 
+
 ```{r na_count}
-na_df <- df |>
-  select(where(~ any(is.na(.) | . == ""))) |>
-  mutate(across(where(is.character), ~ ifelse(. == "", NA, .))) |>
-  mutate(across(where(is.character), as.factor)) %>%
+na_df <- df %>%
   {
     tibble(column = names(.), na_count = colSums(is.na(.)))
   } |>
@@ -203,8 +204,14 @@ df <- df |>
     )
   )
 
-df <- df |> select(-SmokerStatus, -ECigaretteUsage)
+# df <- df |> select(-SmokerStatus, -ECigaretteUsage)
 ```
+
+```{r smoke_e_cig}
+(unique(df$ECigaretteUsage))
+(unique(df$SmokerStatus))
+```
+
 
 
 #### Race
