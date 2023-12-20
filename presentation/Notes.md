@@ -68,8 +68,9 @@
 - [x] Say the number of observations and columns
 - [x] Show the total amount of NA's and not NA's (pie chart)
 - [x] Distribution of NA's across columns
-- [ ] Distribution of number of NA's in a row in all the dataset (pie chart)
-  - [ ] Show max an lower bounds
+- [x] Distribution of number of NA's in a row in all the dataset (pie chart)
+  - [x] Show max an lower bounds
+  - Say we will remove observations that have more than "X" NA values (check the barplot to stimate what the threshold should be; Tough bellow 4 seems to be a nice aproach)
 
 ### How to handle NA's
 
@@ -87,19 +88,15 @@ We came to the conclusion to go for undersampling and try the prediction of the 
 
 After predicting and cleaning the NA's from our dataset we have to check for the outliers
 
-- Make a boxplot for: Weight, Height, BMI, SleepHours, PhysicalHealthDays, MentalHealthDays
+- Make a boxplot for: (Weight, Height; we wont be using these so why plot it?), BMI, SleepHours, PhysicalHealthDays, MentalHealthDays
 - Show the distribution using a boxplot
-
-#### Corrupted data
-
-the observations that have more than X values, remove them
 
 #### Handling the outliers
 
-There are three options:
+We hagled multiple options:
 
 - Remove them
-- Change them for the highest/lowest value of the whiskers (IQR)
+- Change them for the highest/lowest value of the whiskers
 - Make clustering to group SleepHours, PhysicalHealthDays, MentalHealthDays
 - Use zscore for normal distributions
 - Checking medical standards
