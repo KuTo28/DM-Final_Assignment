@@ -471,7 +471,7 @@ df <- df |>
     )
   )
 
-# df <- df |> select(-SmokerStatus, -ECigaretteUsage)
+df <- df |> select(-SmokerStatus, -ECigaretteUsage)
 ```
 
 #### Race
@@ -517,14 +517,10 @@ for (col in bool_cols) {
 }
 ```
 
-```{r smoke corr plot}
-corr_df <- na.omit(df)
-cor(corr_df$SmokerStatus, corr_df$ECigaretteUsage)
-```
-
 #### Difficulties
 
 ```{r}
+corr_df <- na.omit(df)
 ggcorr(
   corr_df %>% select(contains("Difficulty")),
   label = TRUE,
