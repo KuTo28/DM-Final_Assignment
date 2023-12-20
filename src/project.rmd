@@ -449,13 +449,13 @@ df <- df %>%
 #### Sleep
 
 ```{r cat sleep}
-df <- df |>
+df <- df %>%
   mutate(
     Sleep = case_when(
-      Sleep %in% c(1:5, 11:24) ~ "Not Appropiated",
-      Sleep %in% c(6, 10) ~ "Appropiated",
-      Sleep %in% c(7:9) ~ "Optimal",
-      TRUE ~ Slepp
+      SleepHours %in% 1:5 | SleepHours %in% 11:24 ~ "Not Appropriate",
+      SleepHours %in% c(6, 10) ~ "Appropriate",
+      SleepHours %in% 7:9 ~ "Optimal",
+      TRUE ~ as.character(SleepHours)
     )
   )
 ```
