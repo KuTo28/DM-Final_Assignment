@@ -132,6 +132,8 @@ whyy are we using these variables as our target
 - TetanusLast10Tdap by having or not the vaccine (show it)
 - HasSmoked by having or not smoked something in their lifes (show it)
 - LastCheckupTime (show it)
+- Mentalhealth and physicalhealth days using clustering( as we can see 3 clusters on Low, medium and high)
+- Sleephours using the medical consensus
 
 ### How do we plan to solve it?
 
