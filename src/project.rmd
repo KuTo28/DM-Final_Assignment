@@ -46,20 +46,65 @@ df <- df |> select(-RemovedTeeth)
 
 !TODO
 
+```{r na_dist}
+pie_data <- data.frame(
+  category = c("NA", "Non-NA"),
+  count = c(sum(is.na(df)), sum(!is.na(df)))
+) |>
+  mutate(
+    percentage = round(count / sum(count) * 100, 2)
+  )
+
+ggplot(pie_data, aes(x = "", y = count, fill = category)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +
+  geom_text(
+    aes(
+      x = 1.6,
+      label = paste0(percentage, "%")
+    ),
+    position = position_stack(vjust = 0.5),
+    size = 10
+  ) +
+  coord_polar("y") +
+  scale_fill_manual(values = c("NA" = "#ff9a00", "Non-NA" = "#27a7d8")) +
+  labs(title = "NA vs Non-NA Counts") +
+  theme_void() +
+  theme(
+    axis.text.y = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    plot.title = element_text(hjust = 0.5)
+  )
+```
 
 ```{r na_count}
-na_df <- df %>%
-  {
-    tibble(column = names(.), na_count = colSums(is.na(.)))
-  } |>
+na_df <- tibble(
+  column = names(df),
+  na_count = colSums(is.na(df))
+) |>
   filter(na_count > 0) |>
   arrange(desc(na_count))
 
-ggplot(na_df, aes(x = column, y = na_count)) +
+# Assuming na_df is your data frame
+ggplot(
+  na_df,
+  aes(
+    x = column,
+    y = na_count,
+    label = scales::percent(na_count / sum(na_count), accuracy = 0.01)
+  )
+) +
   geom_bar(
     stat = "identity",
     fill = "skyblue",
     position = "dodge"
+  ) +
+  geom_text(
+    aes(label = scales::percent(na_count / sum(na_count), accuracy = 0.01)),
+    position = position_dodge(width = 1), # Adjust width as needed
+    vjust = 0.4, # Adjust vertical position of labels
+    hjust = -0.3,
+    size = 3 # Adjust text size
   ) +
   labs(title = "NA Counts for Each Column") +
   theme_minimal() +
@@ -70,6 +115,48 @@ ggplot(na_df, aes(x = column, y = na_count)) +
     plot.title = element_text(hjust = 0.5)
   ) +
   coord_flip()
+```
+
+```{r}
+na_group_threshold <- 10
+
+na_count <- df |>
+  is.na() |>
+  rowSums() |>
+  table() |>
+  as.data.frame() |>
+  mutate(across(is.factor, as.numeric)) |>
+  rename(num_na = Var1)
+
+na_count <- na_count |>
+  filter(num_na <= na_group_threshold) |>
+  mutate(num_na = as.character(num_na)) |>
+  bind_rows(
+    data.frame(
+      num_na = paste0(na_group_threshold, "+"),
+      Freq = sum(na_count$Freq[as.numeric(na_count$num_na) > na_group_threshold])
+    )
+  )
+```
+
+```{r}
+# Plotting the pie chart with labels
+ggplot(na_count, aes(x = "", y = Freq, fill = num_na, label = sprintf("%.1f%%", Freq / sum(Freq) * 100))) +
+  geom_bar(stat = "identity", width = 1) +
+  geom_text(
+    aes(x = 1.6, label = sprintf("%.1f%%", Freq / sum(Freq) * 100)),
+    position = position_stack(vjust = 0.5),
+    size = 4
+  ) + # Add labels
+  coord_polar(theta = "y") +
+  labs(title = "Distribution of NA Counts per Row") +
+  theme_void() +
+  theme(
+    axis.text.y = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    plot.title = element_text(hjust = 0.5)
+  )
 ```
 
 ### Data generation
@@ -140,7 +227,7 @@ ggplot(df, aes(x = AgeCategory)) +
     fill = "skyblue",
     position = "dodge"
   ) +
-  labs(title = "Age frequency distribution") +
+  labs(title = "Age countuency distribution") +
   theme_minimal() +
   theme(
     axis.title.x = element_blank(),
@@ -479,4 +566,28 @@ ggplot(df_encoded, aes(x = BMI, color = Gender)) +
   ) +
   theme_minimal() +
   coord_flip()
+```
+
+```{r}
+boxplot(na.omit(df$WeightInKilograms), main = "Weight")
+```
+
+```{r}
+boxplot(na.omit(df$HeightInMeters), main = "Height")
+```
+
+```{r}
+boxplot(na.omit(df$BMI), main = "BMI")
+```
+
+```{r}
+boxplot(na.omit(df$SleepHours), main = "Sleep")
+```
+
+```{r}
+boxplot(na.omit(df$PhysicalHealthDays), main = "Physical Health Days")
+```
+
+```{r}
+boxplot(na.omit(df$MentalHealthDays), main = "Mental Health Days")
 ```
