@@ -37,7 +37,6 @@ model_statistics <- function(num_samples, target_variable, dataframe) {
 plot_pie_freq <- function(variable, plot_name) {
   data <- data.frame(table(variable))
 
-  colnames(data)
   color_palette <- pals::stepped3(n = length(unique(variable)))
   ggplot(data, aes(x = "", y = Freq, fill = variable)) +
     geom_bar(stat = "identity", width = 1) +
@@ -164,22 +163,19 @@ pie_data <- data.frame(
     percentage = round(count / sum(count) * 100, 2)
   )
 
+color_palette <- pals::stepped3(n = length(unique(pie_data)))
 ggplot(pie_data, aes(x = "", y = count, fill = category)) +
-  geom_bar(stat = "identity", width = 1, color = "white") +
+  geom_bar(stat = "identity", width = 1) +
   geom_text(
-    aes(
-      x = 1.6,
-      label = paste0(percentage, "%")
-    ),
+    aes(x = 1.6, label = sprintf("%.1f%%", count / sum(count) * 100)),
     position = position_stack(vjust = 0.5),
-    size = 10
+    size = 4
   ) +
-  coord_polar("y") +
-  scale_fill_manual(values = c("NA" = "#ff9a00", "Non-NA" = "#27a7d8")) +
+  coord_polar(theta = "y") +
   labs(title = "NA vs Non-NA Counts") +
+  scale_fill_manual(values = color_palette) +
   theme_void() +
   theme(
-    axis.text.y = element_blank(),
     axis.title.x = element_blank(),
     axis.title.y = element_blank(),
     plot.title = element_text(hjust = 0.5)
@@ -336,19 +332,14 @@ boxplot(na.omit(df$MentalHealthDays), main = "Mental Health Days")
 
 Now we can use all the data in the dataset to predict the height and the weight
 
-```{r fixing_weigh_weight_bmi}
+```{r data_gen weight}
 weight_model <- rpart(WeightInKilograms ~ ., data = df, method = "anova")
-height_model <- rpart(HeightInMeters ~ ., data = df, method = "anova")
-
-# Predict WeightInKilograms for NA values
 df$WeightInKilograms[is.na(df$WeightInKilograms)] <- predict(weight_model, newdata = df[is.na(df$WeightInKilograms), ])
-
-# Predict HeightInMeters for NA values
-df$HeightInMeters[is.na(df$HeightInMeters)] <- predict(height_model, newdata = df[is.na(df$HeightInMeters), ])
-```
-
-```{r}
 model_statistics(num_samples = 10000, target_variable = "WeightInKilograms", dataframe = df)
+```
+```{r data_gen height}
+height_model <- rpart(HeightInMeters ~ ., data = df, method = "anova")
+df$HeightInMeters[is.na(df$HeightInMeters)] <- predict(height_model, newdata = df[is.na(df$HeightInMeters), ])
 model_statistics(num_samples = 10000, target_variable = "HeightInMeters", dataframe = df)
 ```
 
@@ -417,20 +408,10 @@ df$BMI <- cut(
   labels = bmi_categories,
   include.lowest = TRUE
 )
+```
 
-ggplot(df, aes(x = BMI)) +
-  geom_bar(
-    stat = "count",
-    fill = "skyblue",
-    position = "dodge"
-  ) +
-  labs(title = "BMI distribution") +
-  theme_minimal() +
-  theme(
-    axis.title.x = element_blank(),
-    axis.title.y = element_blank(),
-    plot.title = element_text(hjust = 0.5)
-  )
+```{r BMI pie plot}
+plot_pie_freq(df$BMI, "BMI distribution")
 ```
 
 #### Tetanus
@@ -449,27 +430,48 @@ df <- df |> select(-TetanusLast10Tdap)
 ```
 
 ```{r tetanus plot pie}
-
+plot_pie_freq(df$TetanusVaccinated, "Tetanus distribution")
 ```
 
 #### Smoker
+
+```{r smoke_e_cig}
+df <- df |>
+  mutate(
+    ECigaretteUsage = case_when(
+      ECigaretteUsage == "Not at all (right now)" ~ "No",
+      ECigaretteUsage == "Never used e-cigarettes in my entire life" ~ "No",
+      ECigaretteUsage == "Use them every day" ~ "Yes",
+      ECigaretteUsage == "Use them some days" ~ "Yes",
+      is.na(ECigaretteUsage) ~ "not known",
+      TRUE ~ ECigaretteUsage
+    )
+  )
+
+df <- df |>
+  mutate(
+    SmokerStatus = case_when(
+      SmokerStatus == "Never smoked" ~ "No",
+      SmokerStatus == "Former smoker" ~ "Yes",
+      SmokerStatus == "Current smoker - now smokes some days" ~ "Yes",
+      SmokerStatus == "Current smoker - now smokes every day" ~ "Yes",
+      is.na(SmokerStatus) ~ "not known",
+      TRUE ~ SmokerStatus
+    )
+  )
+```
 
 ```{r smoking_map}
 df <- df |>
   mutate(
     HasSmoked = ifelse(
-      str_detect(SmokerStatus, "smoker") | str_detect(ECigaretteUsage, "^Use"),
+      SmokerStatus == "Yes" | ECigaretteUsage == "Yes",
       "Yes",
       "No"
     )
   )
 
-df <- df |> select(-SmokerStatus, -ECigaretteUsage)
-```
-
-```{r smoke_e_cig}
-(unique(df$ECigaretteUsage))
-(unique(df$SmokerStatus))
+# df <- df |> select(-SmokerStatus, -ECigaretteUsage)
 ```
 
 #### Race
@@ -489,19 +491,18 @@ df <- df |>
       LastCheckupTime == "Within past 2 years (1 year but less than 2 years ago)" ~ 2,
       LastCheckupTime == "Within past 5 years (2 years but less than 5 years ago)" ~ 5,
       LastCheckupTime == "5 or more years ago" ~ 6,
-      AgeCategory == "" ~ 0,
-      TRUE ~ 0
-    ),
-    YearsSinceCheckup = ifelse(
-      YearsSinceCheckup == 0,
-      median(YearsSinceCheckup, na.rm = TRUE),
-      YearsSinceCheckup
+      is.na(LastCheckupTime) ~ 999,
+      TRUE ~ 999
     )
   )
 
 df <- df |> select(-LastCheckupTime)
 
 df |> count(YearsSinceCheckup)
+```
+
+```{r years_since_checkuo pie plot}
+plot_pie_freq(df$YearsSinceCheckup, "YearsSinceCheckup distribution")
 ```
 
 #### Yes/No
@@ -516,13 +517,14 @@ for (col in bool_cols) {
 }
 ```
 
+```{r smoke corr plot}
+corr_df <- na.omit(df)
+cor(corr_df$SmokerStatus, corr_df$ECigaretteUsage)
+```
+
 #### Difficulties
 
 ```{r}
-# DEBUG
-corr_df <- na.omit(df)
-(corr_df %>% select(contains("Difficulty")) |> colnames())
-
 ggcorr(
   corr_df %>% select(contains("Difficulty")),
   label = TRUE,
@@ -556,6 +558,10 @@ df <- df %>%
   )
 ```
 
+```{r sleep plot pie}
+plot_pie_freq(df$Sleep, "Sleep distribution")
+```
+
 #### Mental and Physical
 
 ```{r hclust mental}
@@ -565,8 +571,8 @@ make_hclust(
   data.frame(df$MentalHealthDays) |>
     na.omit() %>%
     sample_n(1200) |>
-    scale()
-    , "MentalHealthDays Clustering Dendrogram"
+    scale(),
+  "MentalHealthDays Clustering Dendrogram"
 )
 ```
 
@@ -576,7 +582,7 @@ make_hclust(
     na.omit() %>%
     sample_n(1200) |>
     scale(),
-    "PhysicalHealthDays Clustering Dendrogram"
+  "PhysicalHealthDays Clustering Dendrogram"
 )
 ```
 
