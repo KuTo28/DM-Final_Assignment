@@ -1,25 +1,22 @@
 import os
+import sys
 
 if len(sys.argv) != 3:
     print("This cli takes two positional arguments <path> <merged_filename>")
     exit(1)
 
-path, merged_filename = sys.argv[1:2]
+path = sys.argv[1]
+target_file = sys.argv[2]
 
-# Get a list of files in the directory
-files = [filename for filename in os.listdir() if filename[0].isdigit()]
+files = (filename for filename in os.listdir(path) if filename[0].isdigit())
 
-# Sort the files based on their numeric prefix
 sorted_files = sorted(files, key=lambda x: int(x.split("_")[0]))
 
-# Merge the contents of the sorted files
-merged_contents = ""
+lines = []
 for filename in sorted_files:
     file_path = os.path.join(path, filename)
     with open(file_path, "r") as file:
-        merged_contents += file.read()
+        lines.extend(file.readlines())
 
-# Write the merged contents to a new file
-merged_file_path = os.path.join(path, merged_filename)
-with open(merged_file_path, "w") as merged_file:
-    merged_file.write(merged_contents)
+with open(os.path.join(path, target_file), "w") as merged_file:
+    merged_file.writelines(lines)

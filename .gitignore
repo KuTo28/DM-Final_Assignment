@@ -56,3 +56,6 @@ data/heart_data*
 
 # Compiled files
 *.html
+
+#Obsidian files
+.obsidian
