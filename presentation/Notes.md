@@ -66,9 +66,10 @@
 ### Dataset
 
 - [x] Say the number of observations and columns
-- [ ] Show the total amount of NA's and not NA's (pie chart)
-- [ ] Distribution of NA's across columns (pie chart)
+- [x] Show the total amount of NA's and not NA's (pie chart)
+- [x] Distribution of NA's across columns
 - [ ] Distribution of number of NA's in a row in all the dataset (pie chart)
+  - [ ] Show max an lower bounds
 
 ### How to handle NA's
 
@@ -88,6 +89,10 @@ After predicting and cleaning the NA's from our dataset we have to check for the
 
 - Make a boxplot for: Weight, Height, BMI, SleepHours, PhysicalHealthDays, MentalHealthDays
 - Show the distribution using a boxplot
+
+#### Corrupted data
+
+the observations that have more than X values, remove them
 
 #### Handling the outliers
 
