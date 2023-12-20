@@ -238,6 +238,7 @@ boxplot(na.omit(df$MentalHealthDays), main = "Mental Health Days")
 ### Data generation
 
 Now we can use all the data in the dataset to predict the height and the weight
+
 ```{r fixing_weigh_weight_bmi}
 weight_model <- rpart(WeightInKilograms ~ ., data = df, method = "anova")
 height_model <- rpart(HeightInMeters ~ ., data = df, method = "anova")
@@ -247,6 +248,39 @@ df$WeightInKilograms[is.na(df$WeightInKilograms)] <- predict(weight_model, newda
 
 # Predict HeightInMeters for NA values
 df$HeightInMeters[is.na(df$HeightInMeters)] <- predict(height_model, newdata = df[is.na(df$HeightInMeters), ])
+```
+
+```{r}
+model_statistics <- function(num_samples, target_variable, dataframe) {
+  df2 <- dataframe
+
+  # Sample non-NA indices
+  non_na_indices <- which(!is.na(df2[[target_variable]]))
+  sample_indices <- sample(non_na_indices, num_samples)
+
+  df2[[target_variable]][sample_indices] <- NA
+
+  # Build model
+  model_formula <- formula(paste(target_variable, "~ ."))
+  weight_model <- rpart(model_formula, data = df2, method = "anova")
+
+  # Predict for NA values
+  df2[[target_variable]][is.na(df2[[target_variable]])] <- predict(weight_model, newdata = df2[is.na(df2[[target_variable]]), ])
+
+  # Actual values for comparison
+  actual_values <- dataframe[[target_variable]][sample_indices]
+
+  # Calculate accuracy and standard deviation
+  accuracy <- 1 - sum((df2[[target_variable]][sample_indices] - actual_values)^2) / sum((actual_values - mean(actual_values))^2)
+  std_deviation <- sd(df2[[target_variable]][sample_indices] - actual_values)
+
+  # Return results
+  return(tibble(accuracy = accuracy, std_deviation = std_deviation))
+}
+```
+```{r}
+model_statistics(num_samples = 10000, target_variable = "WeightInKilograms", dataframe = df)
+model_statistics(num_samples = 10000, target_variable = "HeightInMeters", dataframe = df)
 ```
 
 After predicting the values the BMI that were NA can be calculated and the `WeightInKilograms` and `HeightInMeters` are redundant and can be removed.
@@ -494,7 +528,7 @@ plot_hclust <- function(data, method, num_clusters) {
   # Customize the ggplot dendrogram
   fviz_dend(
     hc,
-    main = glue("Clusters: {num_clusters}\nMethod: {method}"),
+    main = glue("PhysicalHealthDays clustering"),
     show_labels = FALSE
   ) +
     theme( # nolint
@@ -504,9 +538,11 @@ plot_hclust <- function(data, method, num_clusters) {
 ```
 
 ```{r kmeans clustering}
+set.seed(29)
+
 MentalDistress <- data.frame(df$MentalHealthDays) |>
   na.omit() %>%
-  sample_n(1000) |>
+  sample_n(1200) |>
   scale()
 
 parameters <- expand.grid(
@@ -526,18 +562,9 @@ plot_hclust(MentalDistress, best_result$method, best_result$num_clusters)
 ```
 
 ```{r}
-# kmeans_result <- kmeans(MentalDistress, centers = 3)
-#
-# # Add cluster assignments to the original data frame
-# MentalDistress$cluster <- as.factor(kmeans_result$cluster)
-#
-# ggplot(MentalDistress, aes(x = MentalDistress, y = as.numeric(cluster), color = cluster)) +
-#   geom_point() +
-#   labs(title = "K-means Clustering Results for Discrete Variable",
-#        x = "Discrete Variable",
-#        y = "Cluster") +
-#   scale_color_manual(values = c("1" = "red", "2" = "green", "3" = "blue")) +  # Adjust colors as needed
-#   theme_minimal()
+MentalDistress_df <- tibble(
+  MentalDistress = MentalDistress
+)
 ```
 
 #### Factor
