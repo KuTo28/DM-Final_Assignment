@@ -231,7 +231,8 @@ na_count <- df |>
   table() |>
   as.data.frame() |>
   mutate(across(is.factor, as.numeric)) |>
-  rename(num_na = Var1)
+  rename(num_na = Var1) |>
+  mutate(num_na = num_na - 1)
 
 na_count_unbounded <- na_count
 
@@ -472,6 +473,10 @@ df <- df |>
   )
 
 df <- df |> select(-SmokerStatus, -ECigaretteUsage)
+```
+
+```{r smoked pie plot}
+plot_pie_freq(df$HasSmoked, "HasSmoked distribution")
 ```
 
 #### Race
