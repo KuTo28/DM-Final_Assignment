@@ -132,9 +132,19 @@ whyy are we using these variables as our target
 - TetanusLast10Tdap by having or not the vaccine (show it)
 - HasSmoked by having or not smoked something in their lifes (show it)
 - LastCheckupTime (show it)
-- Mentalhealth and physicalhealth days using clustering( as we can see 3 clusters on Low, medium and high)
+- Mentalhealth and physicalhealth days using clustering(as we can see 3 clusters on Low, medium and high)
 - Sleephours using the medical consensus
 
 ### How do we plan to solve it?
 
 yap about predictive models
+
+
+## Our feedback
+
+- Clean our data first 
+- Use log on me health days and whatnot
+- Say max and low value for bmi
+- Re-think the main question
+- Dendrograma BMI/Sleep
+- In the map show in some way the one with the highest and lowest BMI 
