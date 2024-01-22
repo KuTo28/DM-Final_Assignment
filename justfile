@@ -4,7 +4,7 @@ _:
   @just --list
 
 merge shard_path :
-  @python ./data/merge.py {{shard_path}} ./data/heart_data.csv
+  @python ./data/merge.py {{shard_path}} heart_data.csv
 
 shard file_path n_shards:
   @python ./data/shard.py {{file_path}} {{n_shards}}
