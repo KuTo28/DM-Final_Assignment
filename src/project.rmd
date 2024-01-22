@@ -103,7 +103,7 @@ make_hclust <- function(variable, plot_name) {
 
 ## Setup
 
-```{r libraries}
+```{r libraries, message=FALSE}
 library(dplyr)
 library(ggplot2)
 library(here)
@@ -125,7 +125,6 @@ library(dbscan) # Density based cluster
 library(patchwork) # Plot composer
 library(dendextend) # Color dedongram by cluster
 
-
 set.seed(27)
 ```
 
@@ -133,22 +132,15 @@ set.seed(27)
 df <- read.csv(here("data", "heart_data.csv"))
 
 df[df == ""] <- NA
-df <- df |> mutate(across(is.character, as.factor))
+df <- df |> mutate(across(where(is.character), as.factor))
 ```
 
 ```{r df summary}
 str(df)
+summary(df)
 ```
 
-## Data analysis
-
-### Unimportant variables
-
-!TODO
-
-```{r remove variables}
-df <- df |> select(-RemovedTeeth)
-```
+## Raw Data Analysis
 
 ### Non-numeric values
 
@@ -327,6 +319,93 @@ boxplot(na.omit(df$PhysicalHealthDays), main = "Physical Health Days")
 
 ```{r sandbox plot mental}
 boxplot(na.omit(df$MentalHealthDays), main = "Mental Health Days")
+```
+
+## Data cleanup
+
+### Removal of "corrupted" data
+
+Observations that have more than **5** will be considered as _corrupted_ and thus removed from the dataset
+
+```{r NA remove}
+df <- df[rowSums(is.na(df)) <= 5, ]
+```
+
+### Predictive models
+
+We'll be using the set of observations that have **no** missing values (accounting for 61% of the data)
+
+```{r}
+model_accuracy <- function(model, train, test, characteristic) {
+  fitted_model <- model |>
+    fit(as.formula(paste(characteristic, "~ .")), data = train) # nolint
+
+  pred <- fitted_model |>
+    predict(test) |>
+    pull(.pred_class) # nolint
+
+  results <- test |>
+    mutate(predictions = pred) |>
+    metrics(truth = !!as.name(characteristic), estimate = predictions) |> # nolint
+    filter(.metric %in% c("accuracy", "kap")) |> # nolint
+    pivot_wider(names_from = .metric, values_from = .estimate) |> # nolint
+    select(accuracy, kap) # nolint
+
+  return(list("model" = fitted_model, "metrics" = as.data.frame(results)))
+}
+```
+
+```{r sandbox predictive_models}
+non_na <- df[rowSums(is.na(df)) == 0, ]
+na_rows <- df[rowSums(is.na(df)) > 0, ]
+na_rows_mutable <- df[rowSums(is.na(df)) > 0, ]
+
+split_ratio <- 0.8
+data_split <- initial_split(non_na, prop = split_ratio)
+
+bool_cols <- df %>%
+  select(where(~ all(. %in% c("Yes", "No", NA)))) %>%
+  colnames()
+
+acc_threshold <- 0.8
+model <- decision_tree(
+  engine = "rpart",
+  mode = "classification"
+)
+
+for (name in bool_cols) {
+  model_output <- model_accuracy(
+    model,
+    training(data_split),
+    testing(data_split),
+    name
+  )
+
+  # Check if accuracy is below the threshold
+  if (model_output$metrics$accuracy < acc_threshold) {
+    cat("[IGNORE ]", name, "had a subpar accuracy of", model_output$metrics$accuracy, "\n")
+    next
+  }
+  cat("[REPLACE]", name, "is a good candidate, having an accuracy of", model_output$metrics$accuracy, "\n")
+
+  # Predict for the specified rows with missing values
+  pred <- model_output$model |>
+    predict(na_rows) |>
+    pull(.pred_class)
+
+  # Replace only the missing values in na_rows for the given column
+  for (value in seq_along(na_rows_mutable[[name]])) {
+    if (is.na(na_rows_mutable[[name]][value])) {
+      na_rows_mutable[[name]][value] <- pred[value]
+    }
+  }
+  # na_rows <- na_rows %>%
+  # mutate(across(all_of(bool_cols), ~ ifelse(is.na(.), pred, .)))
+}
+```
+```{r}
+summary(na_rows_mutable)
+summary(na_rows)
 ```
 
 ### Data generation
