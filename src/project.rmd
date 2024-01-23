@@ -3,6 +3,25 @@
 !TODO
 
 ## Helpers
+```{r predictive_model helper}
+model_accuracy <- function(model, train, test, characteristic) {
+  fitted_model <- model |>
+    fit(as.formula(paste(characteristic, "~ .")), data = train) # nolint
+
+  pred <- fitted_model |>
+    predict(test) |>
+    pull(.pred_class) # nolint
+
+  results <- test |>
+    mutate(predictions = pred) |>
+    metrics(truth = !!as.name(characteristic), estimate = predictions) |> # nolint
+    filter(.metric %in% c("accuracy", "kap")) |> # nolint
+    pivot_wider(names_from = .metric, values_from = .estimate) |> # nolint
+    select(accuracy, kap) # nolint
+
+  return(list("model" = fitted_model, "metrics" = as.data.frame(results)))
+}
+```
 
 ```{r stats model helper}
 model_statistics <- function(num_samples, target_variable, dataframe) {
@@ -124,6 +143,7 @@ library(glue)
 library(dbscan) # Density based cluster
 library(patchwork) # Plot composer
 library(dendextend) # Color dedongram by cluster
+library(arules)
 
 set.seed(27)
 ```
@@ -331,112 +351,7 @@ Observations that have more than **5** will be considered as _corrupted_ and thu
 df <- df[rowSums(is.na(df)) <= 5, ]
 ```
 
-### Predictive models
 
-We'll be using the set of observations that have **no** missing values (accounting for 61% of the data)
-
-```{r}
-model_accuracy <- function(model, train, test, characteristic) {
-  fitted_model <- model |>
-    fit(as.formula(paste(characteristic, "~ .")), data = train) # nolint
-
-  pred <- fitted_model |>
-    predict(test) |>
-    pull(.pred_class) # nolint
-
-  results <- test |>
-    mutate(predictions = pred) |>
-    metrics(truth = !!as.name(characteristic), estimate = predictions) |> # nolint
-    filter(.metric %in% c("accuracy", "kap")) |> # nolint
-    pivot_wider(names_from = .metric, values_from = .estimate) |> # nolint
-    select(accuracy, kap) # nolint
-
-  return(list("model" = fitted_model, "metrics" = as.data.frame(results)))
-}
-```
-
-```{r sandbox predictive_models}
-non_na <- df[rowSums(is.na(df)) == 0, ]
-na_rows <- df[rowSums(is.na(df)) > 0, ]
-na_rows_mutable <- df[rowSums(is.na(df)) > 0, ]
-
-split_ratio <- 0.8
-data_split <- initial_split(non_na, prop = split_ratio)
-
-bool_cols <- df %>%
-  select(where(~ all(. %in% c("Yes", "No", NA)))) %>%
-  colnames()
-
-acc_threshold <- 0.8
-model <- decision_tree(
-  engine = "rpart",
-  mode = "classification"
-)
-
-for (name in bool_cols) {
-  model_output <- model_accuracy(
-    model,
-    training(data_split),
-    testing(data_split),
-    name
-  )
-
-  # Check if accuracy is below the threshold
-  if (model_output$metrics$accuracy < acc_threshold) {
-    cat("[IGNORE ]", name, "had a subpar accuracy of", model_output$metrics$accuracy, "\n")
-    next
-  }
-  cat("[REPLACE]", name, "is a good candidate, having an accuracy of", model_output$metrics$accuracy, "\n")
-
-  # Predict for the specified rows with missing values
-  pred <- model_output$model |>
-    predict(na_rows) |>
-    pull(.pred_class)
-
-  # Replace only the missing values in na_rows for the given column
-  for (value in seq_along(na_rows_mutable[[name]])) {
-    if (is.na(na_rows_mutable[[name]][value])) {
-      na_rows_mutable[[name]][value] <- pred[value]
-    }
-  }
-  # na_rows <- na_rows %>%
-  # mutate(across(all_of(bool_cols), ~ ifelse(is.na(.), pred, .)))
-}
-```
-```{r}
-summary(na_rows_mutable)
-summary(na_rows)
-```
-
-### Data generation
-
-Now we can use all the data in the dataset to predict the height and the weight
-
-```{r data_gen weight}
-weight_model <- rpart(WeightInKilograms ~ ., data = df, method = "anova")
-df$WeightInKilograms[is.na(df$WeightInKilograms)] <- predict(weight_model, newdata = df[is.na(df$WeightInKilograms), ])
-model_statistics(num_samples = 10000, target_variable = "WeightInKilograms", dataframe = df)
-```
-```{r data_gen height}
-height_model <- rpart(HeightInMeters ~ ., data = df, method = "anova")
-df$HeightInMeters[is.na(df$HeightInMeters)] <- predict(height_model, newdata = df[is.na(df$HeightInMeters), ])
-model_statistics(num_samples = 10000, target_variable = "HeightInMeters", dataframe = df)
-```
-
-After predicting the values the BMI that were NA can be calculated and the `WeightInKilograms` and `HeightInMeters` are redundant and can be removed.
-```{r}
-df$BMI <- df$WeightInKilograms / (df$HeightInMeters^2)
-
-BMI_subset <- subset(df, select = c("State", "BMI", "HadHeartAttack"))
-BMI_subset$HadHeartAttack <- ifelse(BMI_subset$HadHeartAttack == "Yes", 1, 0)
-# DEBUG
-df |>
-  select(where(~ any(is.na(.)))) |>
-  mutate(across(where(is.character), as.factor)) |>
-  summary()
-
-df <- df |> select(-WeightInKilograms, -HeightInMeters)
-```
 
 ### Variable recodifications
 
@@ -471,27 +386,8 @@ df <- df |>
 df |> count(AgeCategory)
 ```
 
-
 ```{r plot age_dist pie}
 plot_pie_freq(df$AgeCategory, "Age distribution")
-```
-
-#### BMI
-
-```{r BMI_bin}
-bmi_categories <- c("Underweight", "Normal Weight", "Overweight", "Obese", "Extremely Obese")
-bmi_ranges <- c(0, 18.5, 24.9, 29.9, 34.9, Inf)
-
-df$BMI <- cut(
-  df$BMI,
-  breaks = bmi_ranges,
-  labels = bmi_categories,
-  include.lowest = TRUE
-)
-```
-
-```{r BMI pie plot}
-plot_pie_freq(df$BMI, "BMI distribution")
 ```
 
 #### Tetanus
@@ -503,9 +399,9 @@ df <- df |>
       str_detect(TetanusLast10Tdap, "^Yes"),
       "Yes",
       "No"
-    )
+    ),
+    TetanusVaccinated = as.factor(TetanusVaccinated)
   )
-
 df <- df |> select(-TetanusLast10Tdap)
 ```
 
@@ -523,9 +419,9 @@ df <- df |>
       ECigaretteUsage == "Never used e-cigarettes in my entire life" ~ "No",
       ECigaretteUsage == "Use them every day" ~ "Yes",
       ECigaretteUsage == "Use them some days" ~ "Yes",
-      is.na(ECigaretteUsage) ~ "not known",
-      TRUE ~ ECigaretteUsage
-    )
+      TRUE ~ NA
+    ),
+    ECigaretteUsage = as.factor(ECigaretteUsage)
   )
 
 df <- df |>
@@ -535,37 +431,37 @@ df <- df |>
       SmokerStatus == "Former smoker" ~ "Yes",
       SmokerStatus == "Current smoker - now smokes some days" ~ "Yes",
       SmokerStatus == "Current smoker - now smokes every day" ~ "Yes",
-      is.na(SmokerStatus) ~ "not known",
-      TRUE ~ SmokerStatus
-    )
+      TRUE ~ NA
+    ),
+    SmokerStatus = as.factor(SmokerStatus)
   )
 ```
 
-```{r smoking_map}
-df <- df |>
-  mutate(
-    HasSmoked = ifelse(
-      SmokerStatus == "Yes" | ECigaretteUsage == "Yes",
-      "Yes",
-      "No"
-    )
-  )
-
-df <- df |> select(-SmokerStatus, -ECigaretteUsage)
-```
-
-```{r smoked pie plot}
-plot_pie_freq(df$HasSmoked, "HasSmoked distribution")
-```
 
 #### Race
 
+!TO_FORMAL decidimos meter los NA's (10k) en mult
+racial (ya que no sabemos de que raza es decimos que tiene un poco de cada xd)
+para balancear las clases ya que este solo tiene 8k
 ```{r}
-unique(df$RaceEthnicityCategory)
-# This is a mess to clean up
+df <- df |>
+  mutate(
+    RaceEthnicityCategory = case_when(
+      RaceEthnicityCategory == "Black only, Non-Hispanic" ~ "Black",
+      RaceEthnicityCategory == "Multiracial, Non-Hispanic" ~ "Multiracial",
+      RaceEthnicityCategory == "White only, Non-Hispanic" ~ "White",
+      RaceEthnicityCategory == "Other race only, Non-Hispanic" ~ "Other",
+      is.na(RaceEthnicityCategory) ~ "Multiracial",
+      TRUE ~ RaceEthnicityCategory
+    )
+  )
 ```
 
-#### Last check time
+```{r race pie plot}
+plot_pie_freq(df$RaceEthnicityCategory, "Race distribution")
+```
+
+#### Last check-up time
 
 ```{r last_check_time_map}
 df <- df |>
@@ -575,8 +471,8 @@ df <- df |>
       LastCheckupTime == "Within past 2 years (1 year but less than 2 years ago)" ~ 2,
       LastCheckupTime == "Within past 5 years (2 years but less than 5 years ago)" ~ 5,
       LastCheckupTime == "5 or more years ago" ~ 6,
-      is.na(LastCheckupTime) ~ 999,
-      TRUE ~ 999
+      is.na(LastCheckupTime) ~ 6,
+      TRUE ~ 6
     )
   )
 
@@ -587,6 +483,140 @@ df |> count(YearsSinceCheckup)
 
 ```{r years_since_checkuo pie plot}
 plot_pie_freq(df$YearsSinceCheckup, "YearsSinceCheckup distribution")
+```
+
+#### Removed Teeth
+
+```{r}
+df <- df |>
+  mutate(
+    RemovedTeeth = case_when(
+      is.na(RemovedTeeth) ~ "None of them",
+      TRUE ~ RemovedTeeth
+    ),
+    RemovedTeeth = as.factor(RemovedTeeth)
+  )
+
+table(df$RemovedTeeth)
+```
+
+#### Sleep
+
+```{r cat sleep}
+df <- df %>%
+  mutate(
+    Sleep = case_when(
+      SleepHours %in% 1:5 | SleepHours %in% 11:24 ~ "Not Appropriate",
+      SleepHours %in% c(6, 10) ~ "Appropriate",
+      SleepHours %in% 7:9 ~ "Optimal",
+      is.na(SleepHours) ~ "Optimal",
+    )
+  )
+
+df <- df |> select(-SleepHours)
+```
+
+```{r sleep plot pie}
+plot_pie_freq(df$Sleep, "Sleep distribution")
+```
+
+#### Mental and Physical
+
+```{r hclust mental}
+set.seed(29)
+
+make_hclust(
+  data.frame(df$MentalHealthDays) |>
+    na.omit() %>%
+    sample_n(1200) |>
+    scale(),
+  "MentalHealthDays Clustering Dendrogram"
+)
+```
+
+```{r hclust physical}
+make_hclust(
+  data.frame(df$PhysicalHealthDays) |>
+    na.omit() %>%
+    sample_n(1200) |>
+    scale(),
+  "PhysicalHealthDays Clustering Dendrogram"
+)
+```
+
+### Data generation
+
+### Predictive models
+
+We'll be using the set of observations that have **no** missing values (accounting for 61% of the data)
+```{r sandbox predictive_models}
+non_na <- df[rowSums(is.na(df)) == 0, ]
+na_rows <- df[rowSums(is.na(df)) > 0, ]
+na_rows_mutable <- df[rowSums(is.na(df)) > 0, ]
+
+data_split <- initial_split(non_na, prop = 0.8)
+
+bool_cols <- df %>%
+  select(where(~ all(. %in% c("Yes", "No", NA)))) |>
+  select(-HadHeartAttack) |>
+  colnames()
+
+model <- decision_tree(
+  engine = "rpart",
+  mode = "classification"
+)
+
+for (name in bool_cols) {
+  cat("[DOING  ]", name, "\n")
+  model_output <- model_accuracy(
+    model,
+    training(data_split),
+    testing(data_split),
+    name
+  )
+
+  if (model_output$metrics$accuracy < 0.8) {
+    cat("[IGNORE ]", name, "had a subpar accuracy of", model_output$metrics$accuracy, "\n")
+    next
+  }
+  cat("[REPLACE]", name, "is a good candidate, having an accuracy of", model_output$metrics$accuracy, "\n")
+
+  pred <- model_output$model |>
+    predict(na_rows) |>
+    pull(.pred_class)
+
+  # Replace only the missing values in na_rows for the given column
+  for (value in seq_along(na_rows_mutable[[name]])) {
+    if (is.na(na_rows_mutable[[name]][value])) {
+      na_rows_mutable[[name]][value] <- pred[value]
+    }
+  }
+}
+```
+
+```{r merge df}
+df <- Reduce(
+  function(x, y) merge(x, y, all = TRUE),
+  list(non_na, na_rows_mutable)
+)
+```
+
+!TO_FORMAL DEbido a la poca cantidad de valores (3000 not knowns overall), los metermos a la clase que tenga menos datos. En este caso "yes"
+```{r smoking_map}
+df <- df |>
+  mutate(
+    HasSmoked = ifelse(
+      SmokerStatus == "No" | ECigaretteUsage == "No",
+      "No",
+      "Yes"
+    )
+  )
+
+df <- df |> select(-SmokerStatus, -ECigaretteUsage)
+```
+
+```{r smoked pie plot}
+plot_pie_freq(df$HasSmoked, "HasSmoked distribution")
 ```
 
 #### Yes/No
@@ -623,48 +653,83 @@ df <- df %>%
     across(contains("Difficulty"), ~NULL)
   )
 ```
+Now we can use all the data in the dataset to predict the height and the weight
 
-#### Sleep
-
-```{r cat sleep}
-df <- df %>%
-  mutate(
-    Sleep = case_when(
-      SleepHours %in% 1:5 | SleepHours %in% 11:24 ~ "Not Appropriate",
-      SleepHours %in% c(6, 10) ~ "Appropriate",
-      SleepHours %in% 7:9 ~ "Optimal",
-      TRUE ~ as.character(SleepHours)
-    )
-  )
+```{r data_gen weight}
+weight_model <- rpart(WeightInKilograms ~ ., data = df, method = "anova")
+df$WeightInKilograms[is.na(df$WeightInKilograms)] <- predict(weight_model, newdata = df[is.na(df$WeightInKilograms), ])
+model_statistics(num_samples = 10000, target_variable = "WeightInKilograms", dataframe = df)
+```
+```{r data_gen height}
+height_model <- rpart(HeightInMeters ~ ., data = df, method = "anova")
+df$HeightInMeters[is.na(df$HeightInMeters)] <- predict(height_model, newdata = df[is.na(df$HeightInMeters), ])
+model_statistics(num_samples = 10000, target_variable = "HeightInMeters", dataframe = df)
 ```
 
-```{r sleep plot pie}
-plot_pie_freq(df$Sleep, "Sleep distribution")
+After predicting the values the BMI that were NA can be calculated and the `WeightInKilograms` and `HeightInMeters` are redundant and can be removed.
+```{r}
+df$BMI <- df$WeightInKilograms / (df$HeightInMeters^2)
+
+BMI_subset <- subset(df, select = c("State", "BMI", "HadHeartAttack"))
+BMI_subset$HadHeartAttack <- ifelse(BMI_subset$HadHeartAttack == "Yes", 1, 0)
+# DEBUG
+df |>
+  select(where(~ any(is.na(.)))) |>
+  mutate(across(where(is.character), as.factor)) |>
+  summary()
+
+df <- df |> select(-WeightInKilograms, -HeightInMeters)
 ```
 
-#### Mental and Physical
+#### BMI
 
-```{r hclust mental}
-set.seed(29)
+```{r BMI_bin}
+bmi_categories <- c("Underweight", "Normal Weight", "Overweight", "Obese", "Extremely Obese")
+bmi_ranges <- c(0, 18.5, 24.9, 29.9, 34.9, Inf)
 
-make_hclust(
-  data.frame(df$MentalHealthDays) |>
-    na.omit() %>%
-    sample_n(1200) |>
-    scale(),
-  "MentalHealthDays Clustering Dendrogram"
+df$BMI <- cut(
+  df$BMI,
+  breaks = bmi_ranges,
+  labels = bmi_categories,
+  include.lowest = TRUE
 )
 ```
 
-```{r hclust physical}
-make_hclust(
-  data.frame(df$PhysicalHealthDays) |>
-    na.omit() %>%
-    sample_n(1200) |>
-    scale(),
-  "PhysicalHealthDays Clustering Dendrogram"
-)
+```{r BMI pie plot}
+plot_pie_freq(df$BMI, "BMI distribution")
 ```
+### Duplicated observations
+
+Good practice to remove duplicated rows before oversampling ! DO IT AFTER APLYING FEATURE ENGINEERING AND WHATNOT
+
+```{r distinct_removal}
+cat("Removing", sum(duplicated(df)), "duplicated observations")
+df <- unique(df)
+```
+
+```{r sandbox}
+df %>%
+  summarise_all(~ sum(is.na(.))) %>%
+  select_if(~ . > 0)
+
+df %>%
+  summarise_all(~ sum(is.na(.))) %>%
+  select_if(~ . > 0) %>%
+  sum()
+
+```
+
+```{r}
+ggcorr(
+  df,
+  label = TRUE,
+  label_round = 2,
+  hjust = 0.75,
+  angle = -45
+)
+
+```
+
 
 ### Outlier elimination
 
@@ -686,14 +751,6 @@ iqr_mask <- function(vec) {
 }
 ```
 
-### Duplicated observations
-
-Good practice to remove duplicated rows before oversampling ! DO IT AFTER APLYING FEATURE ENGINEERING AND WHATNOT
-
-```{r distinct_removal}
-cat("Removing", sum(duplicated(df)), "duplicated observations")
-df <- unique(df)
-```
 
 ## Data visualization
 
