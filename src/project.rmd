@@ -1002,7 +1002,6 @@ ggplot(df_encoded, aes(x = as.factor(BMI), color = Gender)) +
   theme_minimal() +
   coord_flip()
 ```
-
 # Asoc Rules
 
 ```{r}
@@ -1027,14 +1026,17 @@ str(trans_df)
 image(sample(trans_df, 100))
 ```
 
+
 ```{r}
 rules <- apriori(trans_df)
 rules
 ```
 
+
 ```{r}
 summary(rules)
 ```
+
 
 ```{r}
 run_apriori_with_loop <- function(df, supp_values, conf_values, minlen_values, target) {
@@ -1056,6 +1058,11 @@ run_apriori_with_loop <- function(df, supp_values, conf_values, minlen_values, t
         red_rules <- rules
         not_red_rules <- rules[!is.redundant(rules)]
         rules_conf <- sort(not_red_rules, by = "lift", decreasing = TRUE)
+        
+        reglas <- not_red_rules
+        info_reglas <- inspect(reglas)
+        df_reglas <- as.data.frame(info_reglas)
+        
         result_df <- rbind(
           result_df,
           data.frame(
@@ -1063,7 +1070,8 @@ run_apriori_with_loop <- function(df, supp_values, conf_values, minlen_values, t
             Confidence = conf_val,
             MinLength = minlen_val,
             Redundant_Rules = length(red_rules),
-            Non_Redundant_Rules = length(rules_conf)
+            Non_Redundant_Rules = length(rules_conf),
+            rls = df_reglas
           )
         )
       }
@@ -1073,6 +1081,7 @@ run_apriori_with_loop <- function(df, supp_values, conf_values, minlen_values, t
   return(result_df)
 }
 
+# TODO: Change hyper-params
 supp_values <- c(0.3, 0.4, 0.5)
 conf_values <- c(0.6, 0.7, 0.8, 0.9)
 minlen_values <- c(1, 2, 3, 4)
@@ -1093,11 +1102,11 @@ TetanusVaccinated_rules
 
 ```{r}
 PneumoVaxEver_rules <- run_apriori_with_loop(
-  trans_df,
-  supp_values,
-  conf_values,
-  minlen_values,
-  c("PneumoVaxEver=1", "PneumoVaxEver=0")
+ trans_df,
+ supp_values,
+ conf_values,
+ minlen_values,
+ c("PneumoVaxEver=1", "PneumoVaxEver=0")
 )
 PneumoVaxEver_rules
 ```
@@ -1105,11 +1114,11 @@ PneumoVaxEver_rules
 
 ```{r}
 HIVTesting_rules <- run_apriori_with_loop(
-  trans_df,
-  supp_values,
-  conf_values,
-  minlen_values,
-  c("HIVTesting=1", "HIVTesting=0")
+ trans_df,
+ supp_values,
+ conf_values,
+ minlen_values,
+ c("HIVTesting=1", "HIVTesting=0")
 )
 HIVTesting_rules
 ```
@@ -1117,67 +1126,78 @@ HIVTesting_rules
 
 ```{r}
 ChestScan_rules <- run_apriori_with_loop(
-  trans_df,
-  supp_values,
-  conf_values,
-  minlen_values,
-  c("ChestScan=1", "ChestScan=0")
+ trans_df,
+ supp_values,
+ conf_values,
+ minlen_values,
+ c("ChestScan=1", "ChestScan=0")
 )
 ChestScan_rules
 ```
 
-
-## Eclat
-
 ```{r}
-run_rule_induction <- function(df, support_values, min_confidence_values, target) {
-  result_df <- data.frame()
-
-  for (min_support in support_values) {
-    for (min_confidence in min_confidence_values) {
-      eclad_rules <- eclat(df,
-        parameter = list(support = min_support, tidLists = TRUE),
-        control = list(verbose = FALSE)
-      )
-
-      rulesf <- ruleInduction(eclad_rules, confidence = min_confidence)
-      red_rules <- rulesf
-      rulesf <- rulesf[!is.redundant(rulesf)]
-
-      filtered_rules <- subset(
-        rulesf,
-        rhs %in% target
-      )
-
-      result_df <- rbind(
-        result_df,
-        data.frame(
-          Support = min_support,
-          Confidence = min_confidence,
-          Redundant_Rules = length(red_rules),
-          Non_Redundant_Rules = length(filtered_rules)
-        )
-      )
-    }
-  }
-
-  return(result_df)
+order_df_by <- function(data, min_conf = 0.7, desc = TRUE) {
+  tmp <- data[data$Confidence > min_conf, ]
+  tmp <- tmp[order(tmp$Confidence, tmp$Support, tmp$MinLength, decreasing = desc), ]
+  return(tmp)
 }
+# TetanusVaccinated_rules
+tmp_1 <- order_df_by(TetanusVaccinated_rules)
+tmp_1[1, ]
+# PneumoVaxEver_rules
+tmp_2 <- order_df_by(PneumoVaxEver_rules)
+tmp_2[1, ]
+# HIVTesting_rules
+tmp_3 <- order_df_by(HIVTesting_rules)
+tmp_3[1, ]
+# ChestScan_rules
+tmp_4 <- order_df_by(ChestScan_rules)
+tmp_4[1, ]
 ```
 
+## Predictions for NA using Asoc rules
+
 ```{r}
-support_values <- c(0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
-min_confidence <- c(0.5, 0.6, 0.7, 0.8, 0.9)
+newdata_df <- which(is.na(df$TetanusVaccinated))
+rules <- apriori(
+  trans_df,
+  parameter = list(
+    supp = 0.4,
+    conf = 0.8,
+    minlen = 1,
+    maxlen = 10
+  ),
+  appearance = list(),
+  appearance$rules <- subset(appearance, rhs %pin% "TetanusVaccinated")
+)
+res_inferidos <- predict(rules, newdata = newdata_df)
+```
+```{r}
+missing_rows <- which(is.na(df$TetanusVaccinated))
 
-results <- run_rule_induction(trans_df, support_values, min_confidence, c("TetanusVaccinated=1", "TetanusVaccinated=0"))
-print(results)
+rules <- apriori(
+  trans_df,
+  parameter = list(
+    supp = 0.4,
+    conf = 0.8,
+    minlen = 1,
+    maxlen = 10
+  ),
+  appearance = list()
+)
+rules_with_tetanus <- subset(rules, subset = rhs %pin% "TetanusVaccinated")
 
-results <- run_rule_induction(trans_df, support_values, min_confidence, c("PneumoVaxEver=1", "PneumoVaxEver=0"))
-print(results)
+for (i in 1:length(rules_with_tetanus)) {
+  rule <- rules_with_tetanus[[i]]
+  antecedent <- lhs(rule)
 
-results <- run_rule_induction(trans_df, support_values, min_confidence, c("HIVTesting=1", "HIVTesting=0"))
-print(results)
+  # Find matching rows with missing values and apply predictions
+  matching_rows <- intersect(missing_rows,
+                             which(apply(df[missing_rows, antecedent], 1, function(row) all(row == antecedent))))
 
-results <- run_rule_induction(trans_df, support_values, min_confidence, c("ChestScan=1", "ChestScan=0"))
-print(results)
+  if (length(matching_rows) > 0) {
+    prediction <- as(rule, "data.frame")[1, "TetanusVaccinated"]
+    df$TetanusVaccinated[matching_rows] <- prediction
+  }
+}
 ```
