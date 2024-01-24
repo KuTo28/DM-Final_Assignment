@@ -114,9 +114,15 @@ make_hclust <- function(variable, plot_name) {
     pmap(parameters, ~ perform_hclust(variable, ..1, num_clusters = 3))
   )
 
-  (best_result <- hclust_metrics[which.max(hclust_metrics$silhouette), ])
+  best_result <- hclust_metrics[which.max(hclust_metrics$silhouette), ]
+
 
   plot_hclust(variable, best_result$method, best_result$num_clusters, plot_name)
+
+  return(cutree(
+    hclust(dist(variable), method = best_result$method),
+    k = best_result$num_clusters
+  ))
 }
 ```
 
@@ -453,7 +459,8 @@ df <- df |>
       RaceEthnicityCategory == "Other race only, Non-Hispanic" ~ "Other",
       is.na(RaceEthnicityCategory) ~ "Multiracial",
       TRUE ~ RaceEthnicityCategory
-    )
+    ),
+    RaceEthnicityCategory = as.factor(RaceEthnicityCategory)
   )
 ```
 
@@ -510,7 +517,8 @@ df <- df %>%
       SleepHours %in% c(6, 10) ~ "Appropriate",
       SleepHours %in% 7:9 ~ "Optimal",
       is.na(SleepHours) ~ "Optimal",
-    )
+    ),
+    Sleep = as.factor(Sleep)
   )
 
 df <- df |> select(-SleepHours)
@@ -525,23 +533,98 @@ plot_pie_freq(df$Sleep, "Sleep distribution")
 ```{r hclust mental}
 set.seed(29)
 
-make_hclust(
+mhd_df <-
   data.frame(df$MentalHealthDays) |>
-    na.omit() %>%
-    sample_n(1200) |>
-    scale(),
+  na.omit() %>%
+  sample_n(1200)
+
+mhd_labels <- make_hclust(
+  mhd_df |> scale(),
   "MentalHealthDays Clustering Dendrogram"
-)
+) %>%
+  tibble(Cluster_labels = .) %>%
+  mutate(Cluster_labels = case_when(
+    Cluster_labels == 1 ~ "Low",
+    Cluster_labels == 2 ~ "High",
+    Cluster_labels == 3 ~ "Medium"
+  ))
 ```
 
+```{r}
+mhd_summary <- cbind(mhd_df, mhd_labels) |>
+  group_by(Cluster_labels) |>
+  summarise(
+    MinValue = min(df.MentalHealthDays),
+    MaxValue = max(df.MentalHealthDays)
+  )
+```
+
+!TO_FORMAL With this we see the data shards for a given categorical class. We cn observe that the ranges are not "continuous", as we have numerical values that are not within any class.
+As such we'll, manually add them to one of the classes
+
+```{r}
+mhd_summary$MaxValue[c(1, 3)] <- c(9, 24)
+```
+
+!TO_FORMAL Given that, We'll crete a new column categorizing the values
+
+```{r}
+df <- df |>
+  mutate(
+    MentalHealthIndex = case_when(
+      MentalHealthDays %in% mhd_summary$MinValue[1]:mhd_summary$MaxValue[1] ~ mhd_summary$Cluster_labels[1],
+      MentalHealthDays %in% mhd_summary$MinValue[2]:mhd_summary$MaxValue[2] ~ mhd_summary$Cluster_labels[2],
+      MentalHealthDays %in% mhd_summary$MinValue[3]:mhd_summary$MaxValue[3] ~ mhd_summary$Cluster_labels[3],
+    ),
+    MentalHealthIndex = as.factor(MentalHealthIndex)
+  )
+
+df <- df |> select(-MentalHealthDays)
+```
+
+!TO_FORMAL We'll do the same for `PhysicalHealthDays`
 ```{r hclust physical}
-make_hclust(
-  data.frame(df$PhysicalHealthDays) |>
-    na.omit() %>%
-    sample_n(1200) |>
-    scale(),
+# Create a subset of data, ignoring NA and taking a sample of 1200 observations
+phd_df <- data.frame(df$PhysicalHealthDays) |>
+  na.omit() %>%
+  sample_n(1200)
+
+# clusterize the data and assign semantic labels for each one of them
+phd_labels <- make_hclust(
+  phd_df |> scale(),
   "PhysicalHealthDays Clustering Dendrogram"
-)
+) %>%
+  tibble(Cluster_labels = .) %>%
+  mutate(Cluster_labels = case_when(
+    Cluster_labels == 1 ~ "High",
+    Cluster_labels == 2 ~ "Low",
+    Cluster_labels == 3 ~ "Medium"
+  ))
+
+# Create a range summary for each of the semantic labels
+phd_summary <- cbind(phd_df, phd_labels) |>
+  group_by(Cluster_labels) |>
+  summarise(
+    MinValue = min(df.PhysicalHealthDays),
+    MaxValue = max(df.PhysicalHealthDays)
+  )
+
+# Manually add the missing values to appeal to the 0-30 days range
+phd_summary$MaxValue[c(1, 3)] <- c(12, 27)
+
+# Create a new variable that discretizes the current numerical variable
+df <- df |>
+  mutate(
+    PhysicalHealthIndex = case_when(
+      PhysicalHealthDays %in% phd_summary$MinValue[1]:phd_summary$MaxValue[1] ~ phd_summary$Cluster_labels[1],
+      PhysicalHealthDays %in% phd_summary$MinValue[2]:phd_summary$MaxValue[2] ~ phd_summary$Cluster_labels[2],
+      PhysicalHealthDays %in% phd_summary$MinValue[3]:phd_summary$MaxValue[3] ~ phd_summary$Cluster_labels[3],
+    ),
+    PhysicalHealthIndex = as.factor(PhysicalHealthIndex)
+  )
+
+# Remove the original numerical data
+df <- df |> select(-PhysicalHealthDays)
 ```
 
 ### Data generation
@@ -716,7 +799,6 @@ df %>%
   summarise_all(~ sum(is.na(.))) %>%
   select_if(~ . > 0) %>%
   sum()
-
 ```
 
 ```{r}
@@ -727,9 +809,11 @@ ggcorr(
   hjust = 0.75,
   angle = -45
 )
-
 ```
 
+```{r}
+str(df)
+```
 
 ### Outlier elimination
 
@@ -918,7 +1002,6 @@ ggplot(df_encoded, aes(x = as.factor(BMI), color = Gender)) +
   coord_flip()
 ```
 
-
 # Asoc Rules
 
 ```{r}
@@ -929,7 +1012,10 @@ library(arulesViz)
 ## Apriori
 
 ```{r}
-trans_df <- as(read.csv(here("data", "heart_data.csv"), colClasses = c(rep("factor", times = 40))), "transactions")
+trans_df <- df
+columnas_numericas <- sapply(trans_df, is.numeric)
+trans_df[columnas_numericas] <- lapply(trans_df[columnas_numericas], as.factor)
+trans_df <- as(na.omit(trans_df), "transactions")
 ```
 
 ```{r}
@@ -940,17 +1026,14 @@ str(trans_df)
 image(sample(trans_df, 100))
 ```
 
-
 ```{r}
 rules <- apriori(trans_df)
 rules
 ```
 
-
 ```{r}
 summary(rules)
 ```
-
 
 ```{r}
 run_apriori_with_loop <- function(df, supp_values, conf_values, minlen_values, target) {
@@ -1009,11 +1092,11 @@ TetanusVaccinated_rules
 
 ```{r}
 PneumoVaxEver_rules <- run_apriori_with_loop(
- trans_df,
- supp_values,
- conf_values,
- minlen_values,
- c("PneumoVaxEver=1", "PneumoVaxEver=0")
+  trans_df,
+  supp_values,
+  conf_values,
+  minlen_values,
+  c("PneumoVaxEver=1", "PneumoVaxEver=0")
 )
 PneumoVaxEver_rules
 ```
@@ -1021,11 +1104,11 @@ PneumoVaxEver_rules
 
 ```{r}
 HIVTesting_rules <- run_apriori_with_loop(
- trans_df,
- supp_values,
- conf_values,
- minlen_values,
- c("HIVTesting=1", "HIVTesting=0")
+  trans_df,
+  supp_values,
+  conf_values,
+  minlen_values,
+  c("HIVTesting=1", "HIVTesting=0")
 )
 HIVTesting_rules
 ```
@@ -1033,11 +1116,11 @@ HIVTesting_rules
 
 ```{r}
 ChestScan_rules <- run_apriori_with_loop(
- trans_df,
- supp_values,
- conf_values,
- minlen_values,
- c("ChestScan=1", "ChestScan=0")
+  trans_df,
+  supp_values,
+  conf_values,
+  minlen_values,
+  c("ChestScan=1", "ChestScan=0")
 )
 ChestScan_rules
 ```
@@ -1085,15 +1168,15 @@ run_rule_induction <- function(df, support_values, min_confidence_values, target
 support_values <- c(0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
 min_confidence <- c(0.5, 0.6, 0.7, 0.8, 0.9)
 
-results <- run_rule_induction(trans_df, support_values, min_confidence, c("TetanusVaccinated=1", "TetanusVaccinated=0")) 
+results <- run_rule_induction(trans_df, support_values, min_confidence, c("TetanusVaccinated=1", "TetanusVaccinated=0"))
 print(results)
 
-results <- run_rule_induction(trans_df, support_values, min_confidence, c("PneumoVaxEver=1", "PneumoVaxEver=0")) 
+results <- run_rule_induction(trans_df, support_values, min_confidence, c("PneumoVaxEver=1", "PneumoVaxEver=0"))
 print(results)
 
-results <- run_rule_induction(trans_df, support_values, min_confidence, c("HIVTesting=1", "HIVTesting=0")) 
+results <- run_rule_induction(trans_df, support_values, min_confidence, c("HIVTesting=1", "HIVTesting=0"))
 print(results)
 
-results <- run_rule_induction(trans_df, support_values, min_confidence, c("ChestScan=1", "ChestScan=0")) 
+results <- run_rule_induction(trans_df, support_values, min_confidence, c("ChestScan=1", "ChestScan=0"))
 print(results)
 ```
