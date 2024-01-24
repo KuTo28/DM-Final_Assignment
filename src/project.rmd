@@ -926,25 +926,10 @@ library(arules)
 library(arulesViz)
 ```
 
-
-```{r asoc rules}
-tmp <- df %>% mutate(id = seq_along(Sleep))
-
-trans_df <- tmp %>%
-  select(id, TetanusVaccinated) %>%
-  filter(!is.na(TetanusVaccinated)) %>%
-  unique() %>%
-  split(.$id) %>%
-  lapply(function(x) as(x$TetanusVaccinated, "transactions")) %>%
-  do.call(c, .)
-```
-
-
-
 ## Apriori
 
 ```{r}
-trans_df <- as(read.csv(here("data", "heart_data.csv")), "transactions")
+trans_df <- as(read.csv(here("data", "heart_data.csv"), colClasses = c(rep("factor", times = 40))), "transactions")
 ```
 
 ```{r}
@@ -1013,11 +998,11 @@ minlen_values <- c(1, 2, 3, 4)
 
 ```{r}
 TetanusVaccinated_rules <- run_apriori_with_loop(
- trans_df,
- supp_values,
- conf_values,
- minlen_values,
- c("TetanusVaccinated=1", "TetanusVaccinated=0")
+  trans_df,
+  supp_values,
+  conf_values,
+  minlen_values,
+  c("TetanusVaccinated=1", "TetanusVaccinated=0")
 )
 TetanusVaccinated_rules
 ```
