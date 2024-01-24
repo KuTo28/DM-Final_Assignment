@@ -917,3 +917,198 @@ ggplot(df_encoded, aes(x = as.factor(BMI), color = Gender)) +
   theme_minimal() +
   coord_flip()
 ```
+
+
+# Asoc Rules
+
+```{r}
+library(arules)
+library(arulesViz)
+```
+
+
+```{r asoc rules}
+tmp <- df %>% mutate(id = seq_along(Sleep))
+
+trans_df <- tmp %>%
+  select(id, TetanusVaccinated) %>%
+  filter(!is.na(TetanusVaccinated)) %>%
+  unique() %>%
+  split(.$id) %>%
+  lapply(function(x) as(x$TetanusVaccinated, "transactions")) %>%
+  do.call(c, .)
+```
+
+
+
+## Apriori
+
+```{r}
+trans_df <- as(read.csv(here("data", "heart_data.csv")), "transactions")
+```
+
+```{r}
+inspect(trans_df[1:2, ])
+summary(trans_df)
+str(trans_df)
+
+image(sample(trans_df, 100))
+```
+
+
+```{r}
+rules <- apriori(trans_df)
+rules
+```
+
+
+```{r}
+summary(rules)
+```
+
+
+```{r}
+run_apriori_with_loop <- function(df, supp_values, conf_values, minlen_values, target) {
+  result_df <- data.frame()
+
+  for (supp_val in supp_values) {
+    for (conf_val in conf_values) {
+      for (minlen_val in minlen_values) {
+        rules <- apriori(
+          df,
+          parameter = list(
+            supp = supp_val,
+            conf = conf_val,
+            minlen = minlen_val
+          ),
+          appearance = list(rhs = target),
+          control = list(verbose = FALSE)
+        )
+        red_rules <- rules
+        not_red_rules <- rules[!is.redundant(rules)]
+        rules_conf <- sort(not_red_rules, by = "lift", decreasing = TRUE)
+        result_df <- rbind(
+          result_df,
+          data.frame(
+            Support = supp_val,
+            Confidence = conf_val,
+            MinLength = minlen_val,
+            Redundant_Rules = length(red_rules),
+            Non_Redundant_Rules = length(rules_conf)
+          )
+        )
+      }
+    }
+  }
+
+  return(result_df)
+}
+
+supp_values <- c(0.3, 0.4, 0.5)
+conf_values <- c(0.6, 0.7, 0.8, 0.9)
+minlen_values <- c(1, 2, 3, 4)
+```
+
+
+
+```{r}
+TetanusVaccinated_rules <- run_apriori_with_loop(
+ trans_df,
+ supp_values,
+ conf_values,
+ minlen_values,
+ c("TetanusVaccinated=1", "TetanusVaccinated=0")
+)
+TetanusVaccinated_rules
+```
+
+```{r}
+PneumoVaxEver_rules <- run_apriori_with_loop(
+ trans_df,
+ supp_values,
+ conf_values,
+ minlen_values,
+ c("PneumoVaxEver=1", "PneumoVaxEver=0")
+)
+PneumoVaxEver_rules
+```
+
+
+```{r}
+HIVTesting_rules <- run_apriori_with_loop(
+ trans_df,
+ supp_values,
+ conf_values,
+ minlen_values,
+ c("HIVTesting=1", "HIVTesting=0")
+)
+HIVTesting_rules
+```
+
+
+```{r}
+ChestScan_rules <- run_apriori_with_loop(
+ trans_df,
+ supp_values,
+ conf_values,
+ minlen_values,
+ c("ChestScan=1", "ChestScan=0")
+)
+ChestScan_rules
+```
+
+
+## Eclat
+
+```{r}
+run_rule_induction <- function(df, support_values, min_confidence_values, target) {
+  result_df <- data.frame()
+
+  for (min_support in support_values) {
+    for (min_confidence in min_confidence_values) {
+      eclad_rules <- eclat(df,
+        parameter = list(support = min_support, tidLists = TRUE),
+        control = list(verbose = FALSE)
+      )
+
+      rulesf <- ruleInduction(eclad_rules, confidence = min_confidence)
+      red_rules <- rulesf
+      rulesf <- rulesf[!is.redundant(rulesf)]
+
+      filtered_rules <- subset(
+        rulesf,
+        rhs %in% target
+      )
+
+      result_df <- rbind(
+        result_df,
+        data.frame(
+          Support = min_support,
+          Confidence = min_confidence,
+          Redundant_Rules = length(red_rules),
+          Non_Redundant_Rules = length(filtered_rules)
+        )
+      )
+    }
+  }
+
+  return(result_df)
+}
+```
+
+```{r}
+support_values <- c(0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
+min_confidence <- c(0.5, 0.6, 0.7, 0.8, 0.9)
+
+results <- run_rule_induction(trans_df, support_values, min_confidence, c("TetanusVaccinated=1", "TetanusVaccinated=0")) 
+print(results)
+
+results <- run_rule_induction(trans_df, support_values, min_confidence, c("PneumoVaxEver=1", "PneumoVaxEver=0")) 
+print(results)
+
+results <- run_rule_induction(trans_df, support_values, min_confidence, c("HIVTesting=1", "HIVTesting=0")) 
+print(results)
+
+results <- run_rule_induction(trans_df, support_values, min_confidence, c("ChestScan=1", "ChestScan=0")) 
+print(results)
+```
