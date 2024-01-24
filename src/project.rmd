@@ -150,8 +150,6 @@ library(dbscan) # Density based cluster
 library(patchwork) # Plot composer
 library(dendextend) # Color dedongram by cluster
 library(arules)
-
-set.seed(27)
 ```
 
 ```{r df load}
@@ -536,7 +534,7 @@ set.seed(29)
 mhd_df <-
   data.frame(df$MentalHealthDays) |>
   na.omit() %>%
-  sample_n(1200)
+  slice_sample(n = 1200)
 
 mhd_labels <- make_hclust(
   mhd_df |> scale(),
@@ -544,12 +542,11 @@ mhd_labels <- make_hclust(
 ) %>%
   tibble(Cluster_labels = .) %>%
   mutate(Cluster_labels = case_when(
-    Cluster_labels == 1 ~ "Low",
-    Cluster_labels == 2 ~ "High",
-    Cluster_labels == 3 ~ "Medium"
+    Cluster_labels == 1 ~ "High",
+    Cluster_labels == 2 ~ "Medium",
+    Cluster_labels == 3 ~ "Low"
   ))
 ```
-
 ```{r}
 mhd_summary <- cbind(mhd_df, mhd_labels) |>
   group_by(Cluster_labels) |>
@@ -563,7 +560,7 @@ mhd_summary <- cbind(mhd_df, mhd_labels) |>
 As such we'll, manually add them to one of the classes
 
 ```{r}
-mhd_summary$MaxValue[c(1, 3)] <- c(9, 24)
+mhd_summary$MaxValue[3] <- 26
 ```
 
 !TO_FORMAL Given that, We'll crete a new column categorizing the values
@@ -584,10 +581,12 @@ df <- df |> select(-MentalHealthDays)
 
 !TO_FORMAL We'll do the same for `PhysicalHealthDays`
 ```{r hclust physical}
+set.seed(29)
+
 # Create a subset of data, ignoring NA and taking a sample of 1200 observations
 phd_df <- data.frame(df$PhysicalHealthDays) |>
   na.omit() %>%
-  sample_n(1200)
+  slice_sample(n = 1200)
 
 # clusterize the data and assign semantic labels for each one of them
 phd_labels <- make_hclust(
@@ -597,8 +596,8 @@ phd_labels <- make_hclust(
   tibble(Cluster_labels = .) %>%
   mutate(Cluster_labels = case_when(
     Cluster_labels == 1 ~ "High",
-    Cluster_labels == 2 ~ "Low",
-    Cluster_labels == 3 ~ "Medium"
+    Cluster_labels == 2 ~ "Medium",
+    Cluster_labels == 3 ~ "Low"
   ))
 
 # Create a range summary for each of the semantic labels
@@ -610,7 +609,7 @@ phd_summary <- cbind(phd_df, phd_labels) |>
   )
 
 # Manually add the missing values to appeal to the 0-30 days range
-phd_summary$MaxValue[c(1, 3)] <- c(12, 27)
+phd_summary$MaxValue[3] <- 27
 
 # Create a new variable that discretizes the current numerical variable
 df <- df |>
@@ -688,10 +687,12 @@ df <- Reduce(
 ```{r smoking_map}
 df <- df |>
   mutate(
-    HasSmoked = ifelse(
-      SmokerStatus == "No" | ECigaretteUsage == "No",
-      "No",
-      "Yes"
+    HasSmoked = case_when(
+      SmokerStatus == "No" | ECigaretteUsage == "No" ~ "No",
+      is.na(SmokerStatus) & is.na(ECigaretteUsage) ~ sample(c("Yes", "No"), 1, replace = TRUE),
+      is.na(SmokerStatus) ~ ECigaretteUsage,
+      is.na(ECigaretteUsage) ~ SmokerStatus,
+      TRUE ~ "Yes"
     )
   )
 
