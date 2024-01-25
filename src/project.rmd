@@ -992,7 +992,7 @@ gender_colors <- c("Male" = "#27a7d8", "Female" = "#ff9a00")
 
 # Scatter plot with clusters
 ggplot(df_encoded, aes(x = as.factor(BMI), color = Gender)) +
-  geom_jitter(aes(y = as.numeric(PhysicalHealthDays)), width = 0.1) +
+  geom_jitter(aes(y = as.numeric(PhysicalHealthIndex)), width = 0.1) + # TODO: Check if PhysicalHealthIndex instead of PhysicalHealthDays
   scale_color_manual(values = gender_colors) +
   labs(
     title = "BMI vs. PhysicalHealthDays",
@@ -1039,7 +1039,7 @@ summary(rules)
 
 
 ```{r}
-run_apriori_with_loop <- function(df, supp_values, conf_values, minlen_values, target) {
+run_apriori_with_loop <- function(df, supp_values, conf_values, minlen_values, target, max_rules = 5) {
   result_df <- data.frame()
 
   for (supp_val in supp_values) {
@@ -1062,6 +1062,9 @@ run_apriori_with_loop <- function(df, supp_values, conf_values, minlen_values, t
         reglas <- not_red_rules
         info_reglas <- inspect(reglas)
         df_reglas <- as.data.frame(info_reglas)
+        is_vec <- is.vector(df_reglas)
+        if (!is_vec) { next }
+        df_reglas <- df_reglas[order(df_reglas$confidence, df_reglas$support), ]
         
         result_df <- rbind(
           result_df,
@@ -1071,7 +1074,7 @@ run_apriori_with_loop <- function(df, supp_values, conf_values, minlen_values, t
             MinLength = minlen_val,
             Redundant_Rules = length(red_rules),
             Non_Redundant_Rules = length(rules_conf),
-            rls = df_reglas
+            rls = head(df_reglas, max_rules)
           )
         )
       }
@@ -1082,8 +1085,8 @@ run_apriori_with_loop <- function(df, supp_values, conf_values, minlen_values, t
 }
 
 # TODO: Change hyper-params
-supp_values <- c(0.3, 0.4, 0.5)
-conf_values <- c(0.6, 0.7, 0.8, 0.9)
+supp_values <- c(0.4, 0.5)
+conf_values <- c(0.7, 0.8, 0.9)
 minlen_values <- c(1, 2, 3, 4)
 ```
 
