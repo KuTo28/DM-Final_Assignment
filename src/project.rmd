@@ -1002,205 +1002,46 @@ ggplot(df_encoded, aes(x = as.factor(BMI), color = Gender)) +
   theme_minimal() +
   coord_flip()
 ```
-# Asoc Rules
-
 ```{r}
-library(arules)
-library(arulesViz)
-```
+library(randomForest)
 
-## Apriori
+non_na <- df[rowSums(is.na(df)) == 0, ]
+na_rows <- df[rowSums(is.na(df)) > 0, ]
+na_rows_mutable <- df[rowSums(is.na(df)) > 0, ]
 
-```{r}
-trans_df <- df
-columnas_numericas <- sapply(trans_df, is.numeric)
-trans_df[columnas_numericas] <- lapply(trans_df[columnas_numericas], as.factor)
-trans_df <- as(na.omit(trans_df), "transactions")
-```
+data_split <- initial_split(non_na, prop = 0.8)
 
-```{r}
-inspect(trans_df[1:2, ])
-summary(trans_df)
-str(trans_df)
+bool_cols <- df %>%
+  select(where(~ all(. %in% c("1", "0", NA)))) |>
+  select(-HadHeartAttack, -TetanusVaccinated, -PneumoVaxEver, -HIVTesting, -ChestScan) |>
+  colnames()
 
-image(sample(trans_df, 100))
-```
+for (name in bool_cols) {
+  cat("[DOING  ]", name, "\n")
 
+  model <- randomForest(
+    formula = name ~ .,
+    data = training(data_split),
+    mode = "classification",
+    ntree = 500
+  )
+  
 
-```{r}
-rules <- apriori(trans_df)
-rules
-```
-
-
-```{r}
-summary(rules)
-```
-
-
-```{r}
-run_apriori_with_loop <- function(df, supp_values, conf_values, minlen_values, target, max_rules = 5) {
-  result_df <- data.frame()
-
-  for (supp_val in supp_values) {
-    for (conf_val in conf_values) {
-      for (minlen_val in minlen_values) {
-        rules <- apriori(
-          df,
-          parameter = list(
-            supp = supp_val,
-            conf = conf_val,
-            minlen = minlen_val
-          ),
-          appearance = list(rhs = target),
-          control = list(verbose = FALSE)
-        )
-        red_rules <- rules
-        not_red_rules <- rules[!is.redundant(rules)]
-        rules_conf <- sort(not_red_rules, by = "lift", decreasing = TRUE)
-        
-        reglas <- not_red_rules
-        info_reglas <- inspect(reglas)
-        df_reglas <- as.data.frame(info_reglas)
-        is_vec <- is.vector(df_reglas)
-        if (!is_vec) { next }
-        df_reglas <- df_reglas[order(df_reglas$confidence, df_reglas$support), ]
-        
-        result_df <- rbind(
-          result_df,
-          data.frame(
-            Support = supp_val,
-            Confidence = conf_val,
-            MinLength = minlen_val,
-            Redundant_Rules = length(red_rules),
-            Non_Redundant_Rules = length(rules_conf),
-            rls = head(df_reglas, max_rules)
-          )
-        )
-      }
-    }
+  if (model_output$metrics$accuracy < 0.8) {
+    cat("[IGNORE ]", name, "had a subpar accuracy of", model_output$metrics$accuracy, "\n")
+    next
   }
+  cat("[REPLACE]", name, "is a good candidate, having an accuracy of", model_output$metrics$accuracy, "\n")
 
-  return(result_df)
-}
+  pred <- model_output$model |>
+    predict(na_rows) |>
+    pull(.pred_class)
 
-# TODO: Change hyper-params
-supp_values <- c(0.4, 0.5)
-conf_values <- c(0.7, 0.8, 0.9)
-minlen_values <- c(1, 2, 3, 4)
-```
-
-
-
-```{r}
-TetanusVaccinated_rules <- run_apriori_with_loop(
-  trans_df,
-  supp_values,
-  conf_values,
-  minlen_values,
-  c("TetanusVaccinated=1", "TetanusVaccinated=0")
-)
-TetanusVaccinated_rules
-```
-
-```{r}
-PneumoVaxEver_rules <- run_apriori_with_loop(
- trans_df,
- supp_values,
- conf_values,
- minlen_values,
- c("PneumoVaxEver=1", "PneumoVaxEver=0")
-)
-PneumoVaxEver_rules
-```
-
-
-```{r}
-HIVTesting_rules <- run_apriori_with_loop(
- trans_df,
- supp_values,
- conf_values,
- minlen_values,
- c("HIVTesting=1", "HIVTesting=0")
-)
-HIVTesting_rules
-```
-
-
-```{r}
-ChestScan_rules <- run_apriori_with_loop(
- trans_df,
- supp_values,
- conf_values,
- minlen_values,
- c("ChestScan=1", "ChestScan=0")
-)
-ChestScan_rules
-```
-
-```{r}
-order_df_by <- function(data, min_conf = 0.7, desc = TRUE) {
-  tmp <- data[data$Confidence > min_conf, ]
-  tmp <- tmp[order(tmp$Confidence, tmp$Support, tmp$MinLength, decreasing = desc), ]
-  return(tmp)
-}
-# TetanusVaccinated_rules
-tmp_1 <- order_df_by(TetanusVaccinated_rules)
-tmp_1[1, ]
-# PneumoVaxEver_rules
-tmp_2 <- order_df_by(PneumoVaxEver_rules)
-tmp_2[1, ]
-# HIVTesting_rules
-tmp_3 <- order_df_by(HIVTesting_rules)
-tmp_3[1, ]
-# ChestScan_rules
-tmp_4 <- order_df_by(ChestScan_rules)
-tmp_4[1, ]
-```
-
-## Predictions for NA using Asoc rules
-
-```{r}
-newdata_df <- which(is.na(df$TetanusVaccinated))
-rules <- apriori(
-  trans_df,
-  parameter = list(
-    supp = 0.4,
-    conf = 0.8,
-    minlen = 1,
-    maxlen = 10
-  ),
-  appearance = list(),
-  appearance$rules <- subset(appearance, rhs %pin% "TetanusVaccinated")
-)
-res_inferidos <- predict(rules, newdata = newdata_df)
-```
-```{r}
-missing_rows <- which(is.na(df$TetanusVaccinated))
-
-rules <- apriori(
-  trans_df,
-  parameter = list(
-    supp = 0.4,
-    conf = 0.8,
-    minlen = 1,
-    maxlen = 10
-  ),
-  appearance = list()
-)
-rules_with_tetanus <- subset(rules, subset = rhs %pin% "TetanusVaccinated")
-
-for (i in 1:length(rules_with_tetanus)) {
-  rule <- rules_with_tetanus[[i]]
-  antecedent <- lhs(rule)
-
-  # Find matching rows with missing values and apply predictions
-  matching_rows <- intersect(missing_rows,
-                             which(apply(df[missing_rows, antecedent], 1, function(row) all(row == antecedent))))
-
-  if (length(matching_rows) > 0) {
-    prediction <- as(rule, "data.frame")[1, "TetanusVaccinated"]
-    df$TetanusVaccinated[matching_rows] <- prediction
+  # Replace only the missing values in na_rows for the given column
+  for (value in seq_along(na_rows_mutable[[name]])) {
+    if (is.na(na_rows_mutable[[name]][value])) {
+      na_rows_mutable[[name]][value] <- pred[value]
+    }
   }
 }
 ```
