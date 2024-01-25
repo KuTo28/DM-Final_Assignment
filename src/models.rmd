@@ -1,0 +1,27 @@
+```{r}
+library(tidymodels)
+library(GGally)
+library(parsnip)
+```
+
+```{r}
+df <- read.csv("dataset.csv")
+```
+
+# Random Forest
+
+We will try to predict the HadHeartAttack variable using the other variables.
+
+```{r}
+set.seed(123)
+df_split <- initial_split(na.omit(df), prop = 0.70, strata = HadHeartAttack)
+df_train <- training(df_split)
+df_test <- testing(df_split)
+```
+
+```{r}
+rand_forest(mtry = 25) %>%
+  set_engine("ranger", max.depth = 20) %>%
+  set_mode("regression") %>%
+  fit(HadHeartAttack ~ ., data = df)
+```

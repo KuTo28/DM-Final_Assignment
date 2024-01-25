@@ -3,6 +3,7 @@
 !TODO
 
 ## Helpers
+
 ```{r predictive_model helper}
 model_accuracy <- function(model, train, test, characteristic) {
   fitted_model <- model |>
@@ -320,7 +321,6 @@ ggplot(
   )
 ```
 
-
 ```{r sandbox plot weight}
 boxplot(na.omit(df$WeightInKilograms), main = "Weight")
 ```
@@ -354,8 +354,6 @@ Observations that have more than **5** will be considered as _corrupted_ and thu
 ```{r NA remove}
 df <- df[rowSums(is.na(df)) <= 5, ]
 ```
-
-
 
 ### Variable recodifications
 
@@ -441,12 +439,12 @@ df <- df |>
   )
 ```
 
-
 #### Race
 
 !TO_FORMAL decidimos meter los NA's (10k) en mult
 racial (ya que no sabemos de que raza es decimos que tiene un poco de cada xd)
 para balancear las clases ya que este solo tiene 8k
+
 ```{r}
 df <- df |>
   mutate(
@@ -547,6 +545,7 @@ mhd_labels <- make_hclust(
     Cluster_labels == 3 ~ "Low"
   ))
 ```
+
 ```{r}
 mhd_summary <- cbind(mhd_df, mhd_labels) |>
   group_by(Cluster_labels) |>
@@ -580,6 +579,7 @@ df <- df |> select(-MentalHealthDays)
 ```
 
 !TO_FORMAL We'll do the same for `PhysicalHealthDays`
+
 ```{r hclust physical}
 set.seed(29)
 
@@ -631,6 +631,7 @@ df <- df |> select(-PhysicalHealthDays)
 ### Predictive models
 
 We'll be using the set of observations that have **no** missing values (accounting for 61% of the data)
+
 ```{r sandbox predictive_models}
 non_na <- df[rowSums(is.na(df)) == 0, ]
 na_rows <- df[rowSums(is.na(df)) > 0, ]
@@ -657,10 +658,10 @@ for (name in bool_cols) {
     name
   )
 
-  if (model_output$metrics$accuracy < 0.8) {
-    cat("[IGNORE ]", name, "had a subpar accuracy of", model_output$metrics$accuracy, "\n")
-    next
-  }
+  #if (model_output$metrics$accuracy < 0.8) {
+  #  cat("[IGNORE ]", name, "had a subpar accuracy of", model_output$metrics$accuracy, "\n")
+  #  next
+  #}
   cat("[REPLACE]", name, "is a good candidate, having an accuracy of", model_output$metrics$accuracy, "\n")
 
   pred <- model_output$model |>
@@ -684,6 +685,7 @@ df <- Reduce(
 ```
 
 !TO_FORMAL DEbido a la poca cantidad de valores (3000 not knowns overall), los metermos a la clase que tenga menos datos. En este caso "yes"
+
 ```{r smoking_map}
 df <- df |>
   mutate(
@@ -737,6 +739,7 @@ df <- df %>%
     across(contains("Difficulty"), ~NULL)
   )
 ```
+
 Now we can use all the data in the dataset to predict the height and the weight
 
 ```{r data_gen weight}
@@ -744,6 +747,7 @@ weight_model <- rpart(WeightInKilograms ~ ., data = df, method = "anova")
 df$WeightInKilograms[is.na(df$WeightInKilograms)] <- predict(weight_model, newdata = df[is.na(df$WeightInKilograms), ])
 model_statistics(num_samples = 10000, target_variable = "WeightInKilograms", dataframe = df)
 ```
+
 ```{r data_gen height}
 height_model <- rpart(HeightInMeters ~ ., data = df, method = "anova")
 df$HeightInMeters[is.na(df$HeightInMeters)] <- predict(height_model, newdata = df[is.na(df$HeightInMeters), ])
@@ -751,6 +755,7 @@ model_statistics(num_samples = 10000, target_variable = "HeightInMeters", datafr
 ```
 
 After predicting the values the BMI that were NA can be calculated and the `WeightInKilograms` and `HeightInMeters` are redundant and can be removed.
+
 ```{r}
 df$BMI <- df$WeightInKilograms / (df$HeightInMeters^2)
 
@@ -767,6 +772,21 @@ df <- df |> select(-WeightInKilograms, -HeightInMeters)
 
 #### BMI
 
+```{r}
+boxplot(df$BMI)
+```
+
+Tenemos que calcular los whiskers para luego clappear los outliers
+```{r}
+whisker_values <- df %>%
+  group_by(Group) %>%
+  summarize(
+    lower_whisker = quantile(Value, 0.25) - 1.5 * IQR(Value),
+    upper_whisker = quantile(Value, 0.75) + 1.5 * IQR(Value)
+  )
+```
+
+
 ```{r BMI_bin}
 bmi_categories <- c("Underweight", "Normal Weight", "Overweight", "Obese", "Extremely Obese")
 bmi_ranges <- c(0, 18.5, 24.9, 29.9, 34.9, Inf)
@@ -782,6 +802,7 @@ df$BMI <- cut(
 ```{r BMI pie plot}
 plot_pie_freq(df$BMI, "BMI distribution")
 ```
+
 ### Duplicated observations
 
 Good practice to remove duplicated rows before oversampling ! DO IT AFTER APLYING FEATURE ENGINEERING AND WHATNOT
@@ -835,6 +856,7 @@ iqr_mask <- function(vec) {
   return(vec < (q1 - 1.5 * iqr) | vec > (q3 + 1.5 * iqr))
 }
 ```
+
 
 
 ## Data visualization
@@ -966,7 +988,6 @@ statebins(
   )
 ```
 
-
 ```{r}
 # numeric_cols <- sapply(df, is.numeric)
 #
@@ -1001,47 +1022,4 @@ ggplot(df_encoded, aes(x = as.factor(BMI), color = Gender)) +
   ) +
   theme_minimal() +
   coord_flip()
-```
-```{r}
-library(randomForest)
-
-non_na <- df[rowSums(is.na(df)) == 0, ]
-na_rows <- df[rowSums(is.na(df)) > 0, ]
-na_rows_mutable <- df[rowSums(is.na(df)) > 0, ]
-
-data_split <- initial_split(non_na, prop = 0.8)
-
-bool_cols <- df %>%
-  select(where(~ all(. %in% c("1", "0", NA)))) |>
-  select(-HadHeartAttack, -TetanusVaccinated, -PneumoVaxEver, -HIVTesting, -ChestScan) |>
-  colnames()
-
-for (name in bool_cols) {
-  cat("[DOING  ]", name, "\n")
-
-  model <- randomForest(
-    formula = name ~ .,
-    data = training(data_split),
-    mode = "classification",
-    ntree = 500
-  )
-  
-
-  if (model_output$metrics$accuracy < 0.8) {
-    cat("[IGNORE ]", name, "had a subpar accuracy of", model_output$metrics$accuracy, "\n")
-    next
-  }
-  cat("[REPLACE]", name, "is a good candidate, having an accuracy of", model_output$metrics$accuracy, "\n")
-
-  pred <- model_output$model |>
-    predict(na_rows) |>
-    pull(.pred_class)
-
-  # Replace only the missing values in na_rows for the given column
-  for (value in seq_along(na_rows_mutable[[name]])) {
-    if (is.na(na_rows_mutable[[name]][value])) {
-      na_rows_mutable[[name]][value] <- pred[value]
-    }
-  }
-}
 ```
