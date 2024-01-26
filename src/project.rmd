@@ -4,6 +4,22 @@
 
 ## Helpers
 
+```{r outliers helper}
+z_score_mask <- function(vec) {
+  z_values <- abs((vec - mean(vec)) / sd(vec))
+
+  return(z_values > 3)
+}
+
+iqr_mask <- function(vec) {
+  q1 <- quantile(vec, .25, na.rm = TRUE)
+  q3 <- quantile(vec, .75, na.rm = TRUE)
+  iqr <- IQR(vec, na.rm = TRUE)
+
+  return(vec < (q1 - 1.5 * iqr) | vec > (q3 + 1.5 * iqr))
+}
+```
+
 ```{r predictive_model helper}
 model_accuracy <- function(model, train, test, characteristic) {
   fitted_model <- model |>
@@ -658,10 +674,10 @@ for (name in bool_cols) {
     name
   )
 
-  #if (model_output$metrics$accuracy < 0.8) {
+  # if (model_output$metrics$accuracy < 0.8) {
   #  cat("[IGNORE ]", name, "had a subpar accuracy of", model_output$metrics$accuracy, "\n")
   #  next
-  #}
+  # }
   cat("[REPLACE]", name, "is a good candidate, having an accuracy of", model_output$metrics$accuracy, "\n")
 
   pred <- model_output$model |>
@@ -776,20 +792,10 @@ df <- df |> select(-WeightInKilograms, -HeightInMeters)
 boxplot(df$BMI)
 ```
 
-Tenemos que calcular los whiskers para luego clappear los outliers
-```{r}
-whisker_values <- df %>%
-  group_by(Group) %>%
-  summarize(
-    lower_whisker = quantile(Value, 0.25) - 1.5 * IQR(Value),
-    upper_whisker = quantile(Value, 0.75) + 1.5 * IQR(Value)
-  )
-```
-
-
 ```{r BMI_bin}
-bmi_categories <- c("Underweight", "Normal Weight", "Overweight", "Obese", "Extremely Obese")
-bmi_ranges <- c(0, 18.5, 24.9, 29.9, 34.9, Inf)
+# https://www.cdc.gov/obesity/basics/adult-defining.html#:~:text=If%20your%20BMI%20is%20less,falls%20within%20the%20obesity%20range
+bmi_categories <- c("Underweight", "Healthy Weight", "Overweight", "Obese C1", "Obese C2", "Obese C3" )
+bmi_ranges <- c(0, 18.5, 24.9, 29.9, 34.9, 39.9, Inf)
 
 df$BMI <- cut(
   df$BMI,
@@ -816,11 +822,6 @@ df <- unique(df)
 df %>%
   summarise_all(~ sum(is.na(.))) %>%
   select_if(~ . > 0)
-
-df %>%
-  summarise_all(~ sum(is.na(.))) %>%
-  select_if(~ . > 0) %>%
-  sum()
 ```
 
 ```{r}
@@ -837,27 +838,11 @@ ggcorr(
 str(df)
 ```
 
-### Outlier elimination
+### Export cleaned dataframe to csv
 
-!TODO
-
-```{r outliers}
-z_score_mask <- function(vec) {
-  z_values <- abs((vec - mean(vec)) / sd(vec))
-
-  return(z_values > 3)
-}
-
-iqr_mask <- function(vec) {
-  q1 <- quantile(vec, .25, na.rm = TRUE)
-  q3 <- quantile(vec, .75, na.rm = TRUE)
-  iqr <- IQR(vec, na.rm = TRUE)
-
-  return(vec < (q1 - 1.5 * iqr) | vec > (q3 + 1.5 * iqr))
-}
+```{r export dataframe}
+write.csv(df, here("data", "clean.csv"))
 ```
-
-
 
 ## Data visualization
 
@@ -869,27 +854,6 @@ ggcorr(
   hjust = 0.75,
   angle = -45
 )
-```
-
-```{r states_map_final}
-# geocoded_data <- tibble(State = unique(df$State)) |> geocode("State")
-#
-# obs_counts <- table(df$State)
-# # Add the Obs column to the geocoded_data
-# geocoded_data$Obs <- obs_counts[match(geocoded_data$State, names(obs_counts))]
-#
-# # Merge latitude and longitude information into your_data
-# map <- leaflet(data = geocoded_data) |>
-#   addTiles() |>
-#   addMarkers(
-#     lng = ~long,
-#     lat = ~lat,
-#     popup = ~ paste("Number of observations: ", Obs)
-#   ) |>
-#   addLegend("bottomright", colors = "blue", labels = "Data Points")
-#
-# # Display the map
-# map
 ```
 
 ```{r BMI_heart_attack_state}
@@ -986,17 +950,6 @@ statebins(
     axis.line = element_blank(),
     plot.title = element_text(hjust = 0.5)
   )
-```
-
-```{r}
-# numeric_cols <- sapply(df, is.numeric)
-#
-# # Create histograms for numeric columns on separate pages
-# par(mfcol = c(1, 1)) # Reset layout to default
-#
-# for (col in names(df[, numeric_cols, drop = FALSE])) {
-#   hist(df[[col]], main = col, xlab = col, col = "lightblue", border = "black")
-# }
 ```
 
 ## Classifying

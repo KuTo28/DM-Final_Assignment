@@ -1,27 +1,199 @@
 ```{r}
+model_accuracy <- function(model, train, test, characteristic) {
+  fitted_model <- model |>
+    fit(as.formula(paste(characteristic, "~ .")), data = train) # nolint
+
+  pred <- fitted_model |>
+    predict(test) |>
+    pull(.pred_class) # nolint
+
+  results <- test |>
+    mutate(predictions = pred) |> # nolint
+    metrics(truth = !!as.name(characteristic), estimate = predictions) |> # nolint
+    filter(.metric %in% c("accuracy", "kap")) |> # nolint
+    pivot_wider(names_from = .metric, values_from = .estimate) |> # nolint
+    select(accuracy, kap) # nolint
+
+  return(list("model" = fitted_model, "metrics" = as.data.frame(results)))
+}
+```
+```{r}
 library(tidymodels)
 library(GGally)
-library(parsnip)
+library(here)
+library(caret)
+library(agua)
 ```
 
 ```{r}
-df <- read.csv("dataset.csv")
+df <- read.csv(here("data", "clean.csv"))
+summary(df)
+str(df)
 ```
 
-# Random Forest
+## Data split
 
-We will try to predict the HadHeartAttack variable using the other variables.
+!TO_FORMAL We'll first separate the observations that contain a non numeric `HadHeartAttack` to predict its values in the future
+
+```{r}
+heart_attack_target <- df[is.na(df$HadHeartAttack), ] # 2116
+df <- df[!is.na(df$HadHeartAttack), ]
+df <- df |>
+  select(-X) |>
+  mutate(HadHeartAttack = as.factor(HadHeartAttack))
+```
 
 ```{r}
 set.seed(123)
+
+had_heart_attack <- df[df$HadHeartAttack == 1, ]
+
+# Undersample to the given target
+had_not_heart_attack <- df[df$HadHeartAttack == 0, ] |>
+  slice_sample(n = nrow(had_heart_attack))
+
+df <- Reduce(
+  function(x, y) merge(x, y, all = TRUE),
+  list(had_heart_attack, had_not_heart_attack)
+)
+```
+
+```{r data_split}
 df_split <- initial_split(na.omit(df), prop = 0.70, strata = HadHeartAttack)
-df_train <- training(df_split)
-df_test <- testing(df_split)
+train <- training(df_split)
+test <- testing(df_split)
 ```
 
 ```{r}
-rand_forest(mtry = 25) %>%
-  set_engine("ranger", max.depth = 20) %>%
-  set_mode("regression") %>%
-  fit(HadHeartAttack ~ ., data = df)
+models <- list(
+  logistic_reg(
+    mode = "classification",
+    engine = "glm",
+  ),
+  nearest_neighbor(
+    mode = "classification",
+    engine = "kknn",
+    neighbors = 10
+  ),
+  svm_linear(
+    mode = "classification",
+    engine = "kernlab",
+  ),
+  svm_rbf(
+    mode = "classification",
+    engine = "kernlab",
+  ),
+  decision_tree(
+    mode = "classification",
+    engine = "rpart",
+    tree_depth = 20
+  ),
+  rand_forest(
+    mode = "classification",
+    engine = "ranger"
+  ),
+  bart(
+    mode = "classification",
+    engine = "dbarts",
+    trees = 100
+  ),
+  mars(
+    mode = "classification",
+    engine = "earth",
+  ),
+  mlp(
+    mode = "classification",
+    engine = "nnet",
+    epochs = 100,
+    hidden_units = 8,
+    learn_rate = 0.01
+  ),
+  boost_tree(
+    mode = "classification",
+    engine = "xgboost",
+    trees = 100,
+    tree_depth = 10,
+    min_n = 10,
+    loss_reduction = 0.01,
+    learn_rate = 0.01
+  )
+)
+
+model_results <- map(models, ~ model_accuracy(
+  .,
+  train,
+  test,
+  "HadHeartAttack"
+))
+```
+
+
+## PCA
+
+```{r sandbox}
+df %>%
+  summarise_all(~ sum(is.na(.))) %>%
+  select_if(~ . > 0)
+```
+
+```{r}
+hd_num <- mutate_if(df, is.character, as.factor)
+hd_num <- mutate_if(hd_num, is.factor, as.numeric)
+
+hd_num <- na.omit(hd_num)
+
+str(hd_num)
+pca_mod <- prcomp(hd_num[, -1], scale = TRUE)
+cumsum(pca_mod$sdev / sum(pca_mod$sdev))[1:10]
+
+plot(pca_mod$rotation[, 1:2], type = "n")
+text(pca_mod$rotation[, 1:2], labels = (colnames(hd_num)[-1]))
+```
+
+## Linear Discriminant Analysis (LDA)
+
+```{r}
+lda <- model_accuracy(
+  discrim_linear(
+    mode = "classification",
+    engine = "MASS",
+  ),
+  train |> mutate(HadHeartAttack = as.factor(HadHeartAttack)),
+  test |> mutate(HadHeartAttack = as.factor(HadHeartAttack)),
+  "HadHeartAttack"
+)
+
+lda$metrics
+```
+
+## Quadratic Discriminant Analysis (QDA)
+
+```{r}
+qda <- model_accuracy(
+  discrim_quad(
+    mode = "classification",
+    engine = "MASS",
+  ),
+  train |> mutate(HadHeartAttack = as.factor(HadHeartAttack)),
+  test |> mutate(HadHeartAttack = as.factor(HadHeartAttack)),
+  "HadHeartAttack"
+)
+
+qda$metrics
+```
+
+## Naive Bayes
+
+```{r}
+nb <- model_accuracy(
+  naive_Bayes(
+    mode = "classification",
+    engine = "klaR",
+  ),
+  train |> mutate(HadHeartAttack = as.factor(HadHeartAttack)),
+  test |> mutate(HadHeartAttack = as.factor(HadHeartAttack)),
+  "HadHeartAttack"
+)
+
+nb$metrics
 ```
