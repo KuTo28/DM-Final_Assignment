@@ -1,5 +1,6 @@
 ```{r}
-model_accuracy <- function(model, train, test, characteristic) {
+model_accuracy <- function(name, model, train, test, characteristic) {
+  cat("[DOING]", name, "\n")
   fitted_model <- model |>
     fit(as.formula(paste(characteristic, "~ .")), data = train) # nolint
 
@@ -14,7 +15,11 @@ model_accuracy <- function(model, train, test, characteristic) {
     pivot_wider(names_from = .metric, values_from = .estimate) |> # nolint
     select(accuracy, kap) # nolint
 
-  return(list("model" = fitted_model, "metrics" = as.data.frame(results)))
+  return(list(
+    "name" = name,
+    "model" = fitted_model,
+    "metrics" = as.data.frame(results)
+  ))
 }
 ```
 
@@ -23,7 +28,18 @@ library(tidymodels)
 library(GGally)
 library(here)
 library(caret)
-library(agua)
+library(vip)
+library(discrim)
+
+# Association rules
+library(arules)
+library(arulesViz)
+
+# Bullshit packages
+library(conflicted)
+conflicts_prefer(dplyr::setdiff)
+conflicts_prefer(dplyr::filter)
+conflicts_prefer(dplyr::select)
 ```
 
 ```{r}
@@ -67,61 +83,106 @@ test <- testing(df_split)
 
 ```{r}
 models <- list(
-  logistic_reg(
-    mode = "classification",
-    engine = "glm",
+  list(
+    "name" = "logistical",
+    "model" = logistic_reg(
+      mode = "classification",
+      engine = "glm",
+    )
   ),
-  nearest_neighbor(
-    mode = "classification",
-    engine = "kknn",
-    neighbors = 10
+  list(
+    "name" = "nearest_neighbor",
+    "model" = nearest_neighbor(
+      mode = "classification",
+      engine = "kknn",
+      neighbors = 10
+    )
   ),
-  svm_linear(
-    mode = "classification",
-    engine = "kernlab",
+  list(
+    "name" = "svm_linear",
+    "model" = svm_linear(
+      mode = "classification",
+      engine = "kernlab",
+    )
   ),
-  svm_rbf(
-    mode = "classification",
-    engine = "kernlab",
+  list(
+    "name" = "svm_rbf",
+    "model" = svm_rbf(
+      mode = "classification",
+      engine = "kernlab",
+    )
   ),
-  decision_tree(
-    mode = "classification",
-    engine = "rpart",
-    tree_depth = 20
+  list(
+    "name" = "decision_tree",
+    "model" = decision_tree(
+      mode = "classification",
+      engine = "rpart",
+      tree_depth = 20
+    )
   ),
-  rand_forest(
-    mode = "classification",
-    engine = "ranger"
+  list(
+    "name" = "rand_forest",
+    "model" = rand_forest(
+      mode = "classification"
+    ) %>%
+      set_engine("ranger", importance = "impurity")
   ),
-  bart(
-    mode = "classification",
-    engine = "dbarts",
-    trees = 100
+  list(
+    "name" = "bart",
+    "model" = bart(
+      mode = "classification",
+      engine = "dbarts",
+      trees = 100
+    )
   ),
-  mars(
-    mode = "classification",
-    engine = "earth",
+  list(
+    "name" = "mars",
+    "model" = mars(
+      mode = "classification",
+      engine = "earth",
+    )
   ),
-  mlp(
-    mode = "classification",
-    engine = "nnet",
-    epochs = 100,
-    hidden_units = 8,
-    learn_rate = 0.01
+  list(
+    "name" = "nn",
+    "model" = mlp(
+      mode = "classification",
+      engine = "nnet",
+      epochs = 100,
+      hidden_units = 8,
+      learn_rate = 0.01
+    )
   ),
-  boost_tree(
-    mode = "classification",
-    engine = "xgboost",
-    trees = 100,
-    tree_depth = 10,
-    min_n = 10,
-    loss_reduction = 0.01,
-    learn_rate = 0.01
+  list(
+    "name" = "boost_tree",
+    "model" = boost_tree(
+      mode = "classification",
+      engine = "xgboost",
+      trees = 100,
+      tree_depth = 10,
+      min_n = 10,
+      loss_reduction = 0.01,
+      learn_rate = 0.01
+    )
+  ),
+  list(
+    "name" = "lda",
+    "model" = discrim_linear(
+      mode = "classification",
+      engine = "MASS",
+    )
+  ),
+  list(
+    "name" = "qda",
+    "model" = discrim_quad(
+      mode = "classification",
+      engine = "MASS",
+    )
   )
 )
 
 model_results <- map(models, ~ model_accuracy(
-  .,
+  .$name,
+  .$model,
   train,
   test,
   "HadHeartAttack"
@@ -129,20 +190,28 @@ model_results <- map(models, ~ model_accuracy(
 ```
 
 ```{r model feature importance}
-importance_log <- coef(models$logistic_reg)
-importance_NN <- table(models$nearest_neighbor)
-importance_SVMlinear <- coef(models$svm_linear)
-importance_decision <- models$decision_tree$importance
-importance_rand <- models$rand_forest$importance
+# logistical, decision_tree, rand_forest, nn
+# model_results[[2]]$model$fit %>%
+#  vip(num_features = 20)
+```
+
+```{r}
+f_importances <- function(coef, names) {
+  imp <- coef
+  ordering <- order(imp)
+  imp <- imp[ordering]
+  names <- names[ordering]
+  barplot(imp, names.arg = names, horiz = TRUE, col = "lightblue", main = "Feature Importances")
+}
+
+svm_fit <- coef(model_results[[2]]$model$fit)
+
+svm_fit
+# Visualizar la importancia de características
+f_importances(svm_fit, colnames(svm_fit$workflow$steps$svm_linear$fit$fit$call$x))
 ```
 
 ## PCA
-
-```{r sandbox}
-df %>%
-  summarise_all(~ sum(is.na(.))) %>%
-  select_if(~ . > 0)
-```
 
 ```{r}
 hd_num <- mutate_if(df, is.character, as.factor)
@@ -158,66 +227,42 @@ plot(pca_mod$rotation[, 1:2], type = "n")
 text(pca_mod$rotation[, 1:2], labels = (colnames(hd_num)[-1]))
 ```
 
-## Linear Discriminant Analysis (LDA)
-
-```{r}
-lda <- model_accuracy(
-  discrim_linear(
-    mode = "classification",
-    engine = "MASS",
-  ),
-  train |> mutate(HadHeartAttack = as.factor(HadHeartAttack)),
-  test |> mutate(HadHeartAttack = as.factor(HadHeartAttack)),
-  "HadHeartAttack"
-)
-
-lda$metrics
-```
-
-## Quadratic Discriminant Analysis (QDA)
-
-```{r}
-qda <- model_accuracy(
-  discrim_quad(
-    mode = "classification",
-    engine = "MASS",
-  ),
-  train |> mutate(HadHeartAttack = as.factor(HadHeartAttack)),
-  test |> mutate(HadHeartAttack = as.factor(HadHeartAttack)),
-  "HadHeartAttack"
-)
-
-qda$metrics
-```
-
 ## Naive Bayes
 
 ```{r}
-nb <- model_accuracy(
-  naive_Bayes(
-    mode = "classification",
-    engine = "klaR",
-  ),
-  train |> mutate(HadHeartAttack = as.factor(HadHeartAttack)),
-  test |> mutate(HadHeartAttack = as.factor(HadHeartAttack)),
-  "HadHeartAttack"
-)
+library(e1071)
 
-nb$metrics
+modelo_nb <- naiveBayes(HadHeartAttack ~ ., data = train)
+
+predicciones <- predict(modelo_nb, newdata = test)
+
+matriz_confusion <- confusionMatrix(predicciones, test$HadHeartAttack)
+
+print(matriz_confusion)
+
+# Obtener las tablas de probabilidades
+tabla_frecuencias <- table(predicciones, test$HadHeartAttack)
+
+# Imprime la tabla de frecuencias
+print(tabla_frecuencias)
+
+# Calcula la proporción de predicciones correctas para cada nivel de la variable de respuesta
+proporcion_correctas <- diag(prop.table(tabla_frecuencias, margin = 2))
+
+# Imprime la proporción de predicciones correctas para cada nivel de la variable de respuesta
+print(proporcion_correctas)
 ```
 
 ## Asoociation rules
 
-```{r}
-str(df)
+```
+{r}
+df2 <- as(data.frame(lapply(df, as.factor)), "transactions")
 ```
 
-```{r}
-df2 <- data.frame(lapply(df, as.factor))
-df2 <- as(df2, "transactions")
 ```
-
-```{r}
+{r}
+# Metodo para sacar los mejores combinaciones de hiperparametros
 run_apriori_with_loop <- function(df2, supp_values, conf_values, minlen_values, verbose = FALSE) {
   result_df <- data.frame()
 
@@ -225,7 +270,7 @@ run_apriori_with_loop <- function(df2, supp_values, conf_values, minlen_values, 
     for (conf_val in conf_values) {
       for (minlen_val in minlen_values) {
         if (verbose) {
-          print(paste("[INFO] ", "Support:", supp_val, "Confidence:", conf_val, "MinLength:", minlen_val))
+          print(paste("[INFO] Doinng...", "Support:", supp_val, "Confidence:", conf_val, "MinLength:", minlen_val))
         }
         rules <- apriori(
           df2,
@@ -237,18 +282,12 @@ run_apriori_with_loop <- function(df2, supp_values, conf_values, minlen_values, 
           appearance = list(rhs = c("HadHeartAttack=1", "HadHeartAttack=0")),
           control = list(verbose = FALSE)
         )
-        if (length(rules) == 0) { next }
+        if (length(rules) == 0) {
+          next
+        }
         red_rules <- rules
         not_red_rules <- rules[!is.redundant(rules)]
         rules_conf <- sort(not_red_rules, by = "lift", decreasing = TRUE)
-
-        # Print if there are rules where rhs = HeartAttack=1
-        if (length(rules_conf[rules_conf@rhs %in% "HadHeartAttack=1"]) > 0) {
-          if (verbose) {
-            print(paste("[INFO YES SIRRR] ", "Support:", supp_val, "Confidence:", conf_val, "MinLength:", minlen_val))
-            print(rules_conf[rules_conf@rhs %in% "HadHeartAttack=1"])
-          }
-        }
 
         result_df <- rbind(
           result_df,
@@ -268,7 +307,8 @@ run_apriori_with_loop <- function(df2, supp_values, conf_values, minlen_values, 
 }
 ```
 
-```{r}
+```
+{r}
 supp_values <- c(0.3, 0.4)
 conf_values <- c(0.6, 0.7, 0.8, 0.9)
 minlen_values <- c(2, 3)
@@ -283,32 +323,16 @@ result_rules <- run_apriori_with_loop(
 result_rules
 ```
 
-```{r}
-df3 <- read.csv(here("data", "clean.csv"))
-df3 <- data.frame(lapply(df3, as.factor))
-df3 <- as(df3, "transactions")
 ```
-
-
-```{r}
-#checking subsets of size 1 2 3 4Warning: Mining stopped (time limit reached). Only patterns up to a length of 4 returned! done [7.39s].
+{r}
 rules <- apriori(
-  df3,
+  df2,
   parameter = list(
     supp = 0.3,
     conf = 0.6,
-    minlen = 2,
-    maxlen = 8,
-    maxtime = 1000
+    minlen = 3
   ),
   appearance = list(rhs = c("HadHeartAttack=1", "HadHeartAttack=0")),
+  control = list(verbose = FALSE)
 )
-#inspect(rules)
-
-# PRint the rules with onoly HadHeartAttack=1
-rules_conf <- sort(rules, by = "lift", decreasing = TRUE)
-inspect(rules_conf[rules_conf@rhs %in% "HadHeartAttack=1"])
 ```
-
-Support=0.3, Confidence=0.6, MinLength=2
-Support=0.3, Confidence=0.6, MinLength=3
