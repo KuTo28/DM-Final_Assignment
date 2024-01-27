@@ -595,7 +595,7 @@ As we can see if we take every class individually we can see the imbalance but i
 
 #### Sleep
 
-Before seeing the distribution let's categorize this variable, taking in consideration the medical consensus found in an [official website ot the United States government](https://pubmed.ncbi.nlm.nih.gov/29073398/)
+Before seeing the distribution let's categorize this variable, taking in consideration the medical consensus found in an [official website ot the United States government](https://pubmed.ncbi.nlm.nih.gov/29073398/). We have decided to make all the NA's as "Optimal" because is the mean of hours that people normally sleeps.
 
 ```{r cat sleep}
 df <- df %>%
@@ -612,20 +612,44 @@ df <- df %>%
 df <- df |> select(-SleepHours)
 ```
 
+Here we can see the distribution:
+
 ```{r sleep plot pie}
 plot_pie_freq(df$Sleep, "Sleep distribution")
 ```
 
+As we can see there is a `64.1%` of people that sleeps the reccomended amount of hours, on the other hand we have a `23.9%` of people that sleeps 6 or 10 hours, and a `11.9%` of people that sleeps less than 6 hours or more than 10.
+
 #### Mental and Physical
 
-```{r hclust mental}
+Mental and Physical health days present values from 0-30. Preliminary observation suggests the existence of three distinct clusters within these variables. To objectively validate this intuition, we'll apply hierarchical clusterization. The next step involves the assignment of semantic labels:
+
+- High
+- Medium
+- Low
+
+With the intent of creating a new varialbe that will replace the original one, representing the index of health of the given replaced one.
+
+As the clustering process cannot be done to the whole dataset, yielding an _infinite depth_ error, a sample of the data will be used instead. Consequently, as we want the whole data domain to be taken into account we won't be creating a fully random subset. We'll first insert one value for each class (0-30) and fill the remaining slots with true random samples.
+
+```{r hclust mental data}
 set.seed(29)
 
-mhd_df <-
-  data.frame(df$MentalHealthDays) |>
+mhd_df <- data.frame(df$MentalHealthDays) |>
   na.omit() %>%
-  slice_sample(n = 1200)
+  slice_sample(n = 1170) # Remove 30 items that we will insert manually
 
+mhd_df <- Reduce(
+  function(x, y) merge(x, y, all = TRUE),
+  list(mhd_df, tibble(df.MentalHealthDays = 0:30))
+)
+
+table(mhd_df)
+```
+
+With this we assure that at least we have one value for each day (as we'll be ignoring the NA values for obvious reasons)
+
+```{r hclust mental}
 mhd_labels <- make_hclust(
   mhd_df |> scale(),
   "MentalHealthDays Clustering Dendrogram"
@@ -645,13 +669,6 @@ mhd_summary <- cbind(mhd_df, mhd_labels) |>
     MinValue = min(df.MentalHealthDays),
     MaxValue = max(df.MentalHealthDays)
   )
-```
-
-!TO_FORMAL With this we see the data shards for a given categorical class. We cn observe that the ranges are not "continuous", as we have numerical values that are not within any class.
-As such we'll, manually add them to one of the classes
-
-```{r}
-mhd_summary$MaxValue[3] <- 26
 ```
 
 We'll create a new variable that discretizes the current numerical variable and remove the original numerical data
@@ -678,9 +695,14 @@ set.seed(29)
 # Create a subset of data, ignoring NA and taking a sample of 1200 observations
 phd_df <- data.frame(df$PhysicalHealthDays) |>
   na.omit() %>%
-  slice_sample(n = 1200)
+  slice_sample(n = 1170) # Remove 30 items that we will insert manually
 
-# clusterize the data and assign semantic labels for each one of them
+phd_df <- Reduce(
+  function(x, y) merge(x, y, all = TRUE),
+  list(phd_df, tibble(df.PhysicalHealthDays = 0:30))
+)
+
+# Clusterize the data and assign semantic labels for each one of them
 phd_labels <- make_hclust(
   phd_df |> scale(),
   "PhysicalHealthDays Clustering Dendrogram"
@@ -699,9 +721,6 @@ phd_summary <- cbind(phd_df, phd_labels) |>
     MinValue = min(df.PhysicalHealthDays),
     MaxValue = max(df.PhysicalHealthDays)
   )
-
-# Manually add the missing values to appeal to the 0-30 days range
-phd_summary$MaxValue[3] <- 27
 
 # Create a new variable that discretizes the current numerical variable
 df <- df |>
@@ -722,7 +741,7 @@ df <- df |> select(-PhysicalHealthDays)
 
 ### Predictive models
 
-To conclude with the missing values, we will attempt to predict the features with NA's using observations without any missing values, which constitute 61% of the data. The variables we are trying to predict are binary, meaning they have values of 'Yes' or 'No.' We will use a decision tree, but we will only substitute the value if the accuracy exceeds our threshold, i.e., accuracy > 0.8.
+To conclude with the missing values, we will attempt to predict the features with NA's using observations without any missing values, which constitute 61% of the data. The variables we are trying to predict are binary, meaning they have values of 'Yes' or 'No.' We will use a decision tree, we will substitute all the values predicted but, we have to take into consideration that there are some that doesn't exceed our threshold, i.e., accuracy > 0.8.
 
 ```{r sandbox predictive_models}
 non_na <- df[rowSums(is.na(df)) == 0, ]
@@ -751,8 +770,7 @@ for (name in bool_cols) {
   )
 
   if (model_output$metrics$accuracy < 0.8) {
-   cat("[IGNORE ]", name, "had a subpar accuracy of", model_output$metrics$accuracy, "\n")
-   next
+    cat("[WARNING]", name, "had a subpar accuracy of", model_output$metrics$accuracy, "\n")
   }
 
   cat("[REPLACE]", name, "is a good candidate, having an accuracy of", model_output$metrics$accuracy, "\n")
@@ -770,6 +788,10 @@ for (name in bool_cols) {
 }
 ```
 
+The predictions that has not exceed the threshold are `PhysicalActivities`, `HadArthritis`, `SmokerStatus`, `ChestScan`, `AlcoholDrinkers`, `HIVTesting`, `FluVaxLast12`, `TetanusVaccinated` we will take those predictions to get rid of the NA's in a meaningfull way.
+
+We merge the rows with non-NA and those rows that the NA value has been predicted.
+
 ```{r merge df}
 df <- Reduce(
   function(x, y) merge(x, y, all = TRUE),
@@ -777,28 +799,7 @@ df <- Reduce(
 )
 ```
 
-Due to the small quantity of values, approximately 3000 'Not Knowns,' we will add these values to the class with fewer data points, in this case, 'Yes,' as illustrated in the pie chart below.
-
-```{r smoking_map}
-df <- df |>
-  mutate(
-    HasSmoked = case_when(
-      SmokerStatus == "No" | ECigaretteUsage == "No" ~ "No",
-      is.na(SmokerStatus) & is.na(ECigaretteUsage) ~ sample(c("Yes", "No"), 1, replace = TRUE),
-      is.na(SmokerStatus) ~ ECigaretteUsage,
-      is.na(ECigaretteUsage) ~ SmokerStatus,
-      TRUE ~ "Yes"
-    )
-  )
-
-df <- df |> select(-SmokerStatus, -ECigaretteUsage)
-```
-
-```{r smoked pie plot}
-plot_pie_freq(df$HasSmoked, "HasSmoked distribution")
-```
-
-#### Yes/No
+### Recodification
 
 We'll map the "Yes/No" values to 1/0 respectively to make it easier to work with them
 
@@ -810,6 +811,33 @@ bool_cols <- df |>
 for (col in bool_cols) {
   df[[col]] <- ifelse(df[[col]] == "No", 0, 1)
 }
+```
+
+### Fusion of classes
+
+#### Smoking
+
+Due to the small quantity of values, approximately 3000 'Not Knowns,' we will add these values to the class with fewer data points, in this case, 'Yes,' as illustrated in the pie chart below.
+
+```{r smoking_map}
+df <- df |>
+  mutate(
+    HasSmoked = case_when(
+      SmokerStatus == 0 | ECigaretteUsage == 0 ~ 0,
+      is.na(SmokerStatus) & is.na(ECigaretteUsage) ~ sample(c(1, 0), 1, replace = TRUE),
+      is.na(SmokerStatus) ~ ECigaretteUsage,
+      is.na(ECigaretteUsage) ~ SmokerStatus,
+      TRUE ~ 1
+    )
+  )
+
+df <- df |> select(-SmokerStatus, -ECigaretteUsage)
+```
+
+Here we have the distribution:
+
+```{r smoked pie plot}
+plot_pie_freq(df$HasSmoked, "HasSmoked distribution")
 ```
 
 #### Difficulties
@@ -837,7 +865,9 @@ df <- df %>%
   )
 ```
 
-Now we can use all the data in the dataset to predict the height and the weight
+### WeightInKilograms and HeightInMeters treatment
+
+Now we can use all the data in the dataset to predict the height and the weight.
 
 ```{r data_gen weight}
 weight_model <- rpart(WeightInKilograms ~ ., data = df, method = "anova")
@@ -845,27 +875,36 @@ df$WeightInKilograms[is.na(df$WeightInKilograms)] <- predict(weight_model, newda
 model_statistics(num_samples = 10000, target_variable = "WeightInKilograms", dataframe = df)
 ```
 
+We can see a `84%` of accuracy when predicting Weight.
+
 ```{r data_gen height}
 height_model <- rpart(HeightInMeters ~ ., data = df, method = "anova")
 df$HeightInMeters[is.na(df$HeightInMeters)] <- predict(height_model, newdata = df[is.na(df$HeightInMeters), ])
 model_statistics(num_samples = 10000, target_variable = "HeightInMeters", dataframe = df)
 ```
 
-After predicting the values the BMI that were NA can be calculated and the `WeightInKilograms` and `HeightInMeters` are redundant and can be removed.
+We can see a `67.5%` of accuracy when predicting Height.
+
+After predicting the values of `WeightInKilograms` and `HeightInMeters` we can calculate the BMI of those values that are NA using it's formula:
+
+$$BMI = \frac{Weight}{Height^2}$$
 
 ```{r}
 df$BMI <- df$WeightInKilograms / (df$HeightInMeters^2)
 
+df <- df |> select(-WeightInKilograms, -HeightInMeters)
+```
+
+```{r sandbox BMI}
 BMI_subset <- subset(df, select = c("State", "BMI", "HadHeartAttack"))
-BMI_subset$HadHeartAttack <- ifelse(BMI_subset$HadHeartAttack == "Yes", 1, 0)
 # DEBUG
 df |>
   select(where(~ any(is.na(.)))) |>
   mutate(across(where(is.character), as.factor)) |>
   summary()
-
-df <- df |> select(-WeightInKilograms, -HeightInMeters)
 ```
+
+After the calculation we can remove `WeightInKilograms` and `HeightInMeters` because they are redundant once we have BMI.
 
 #### BMI
 
@@ -916,20 +955,31 @@ cat("Removing", sum(duplicated(df)), "duplicated observations")
 df <- unique(df)
 ```
 
-```{r}
-ggcorr(
-  df,
-  label = TRUE,
-  label_round = 2,
-  hjust = 0.75,
-  angle = -45
-)
-```
-
 Finally, we can see the structure of the dataframe cleaned and ready to be used for analysis and the creation of models.
 
 ```{r}
 str(df)
+```
+
+### NA check
+
+```{r sandbox2}
+df %>%
+  summarise_all(~ sum(is.na(.))) %>%
+  select_if(~ . > 0)
+```
+
+Seeing this amount of NA's we have concluded that the best way to take care of them is to add them to the class with least amount of observations for each variable with the objective of slightly balance the classes. As `HadHeartAttack` is our target, we won't be replacing any NA values, instead, this subset will be used as input to our final predictive function.
+
+```{r}
+df <- df %>%
+  mutate(across(-HadHeartAttack, ~ ifelse(is.na(.), which.min(table(.)), .)))
+```
+
+```{r sandbox3}
+df %>%
+  summarise_all(~ sum(is.na(.))) %>%
+  select_if(~ . > 0)
 ```
 
 ### Export cleaned dataframe to csv
@@ -942,14 +992,20 @@ write.csv(df, here("data", "clean.csv"))
 
 ## Data visualization
 
-```{r}
+```{r corr_matrix}
 ggcorr(
-  df |> select(-where(is.factor)),
+  df,
   label = TRUE,
   label_round = 2,
   hjust = 0.75,
   angle = -45
 )
+```
+
+!TODO Explain some patters of the correlation matrix that seem interesting for our paper
+
+```{r}
+write.csv(BMI_subset, here("data", "BMI.csv"))
 ```
 
 ```{r BMI_heart_attack_state}
@@ -977,7 +1033,6 @@ BMI_state <- BMI_subset |>
   ))
 
 BMI_state$lab <- paste(BMI_state$StateAbb, round(BMI_state$mean_BMI, 2), sep = "\n")
-
 
 BMI_state <- BMI_state |>
   filter(State != "Guam")
@@ -1046,36 +1101,4 @@ statebins(
     axis.line = element_blank(),
     plot.title = element_text(hjust = 0.5)
   )
-```
-
-## Classifying
-
-```{r}
-set.seed(123)
-df_encoded <- df %>%
-  na.omit() %>%
-  mutate(across(where(is.character), as.factor))
-
-str(df)
-str(df_encoded)
-gender_colors <- c("Male" = "#27a7d8", "Female" = "#ff9a00")
-
-# Scatter plot with clusters
-ggplot(df_encoded, aes(x = as.factor(BMI), color = Gender)) +
-  geom_jitter(aes(y = as.numeric(PhysicalHealthIndex)), width = 0.1) +
-  scale_color_manual(values = gender_colors) +
-  labs(
-    title = "BMI vs. PhysicalHealthDays",
-    x = "BMI",
-    y = "Day"
-  ) +
-  theme_minimal() +
-  coord_flip()
-```
-
-
-```{r sandbox}
-df %>%
-  summarise_all(~ sum(is.na(.))) %>%
-  select_if(~ . > 0)
 ```
