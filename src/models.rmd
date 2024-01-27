@@ -17,6 +17,7 @@ model_accuracy <- function(model, train, test, characteristic) {
   return(list("model" = fitted_model, "metrics" = as.data.frame(results)))
 }
 ```
+
 ```{r}
 library(tidymodels)
 library(GGally)
@@ -127,6 +128,13 @@ model_results <- map(models, ~ model_accuracy(
 ))
 ```
 
+```{r model feature importance}
+importance_log <- coef(models$logistic_reg)
+importance_NN <- table(models$nearest_neighbor)
+importance_SVMlinear <- coef(models$svm_linear)
+importance_decision <- models$decision_tree$importance
+importance_rand <- models$rand_forest$importance
+```
 
 ## PCA
 
@@ -197,3 +205,110 @@ nb <- model_accuracy(
 
 nb$metrics
 ```
+
+## Asoociation rules
+
+```{r}
+str(df)
+```
+
+```{r}
+df2 <- data.frame(lapply(df, as.factor))
+df2 <- as(df2, "transactions")
+```
+
+```{r}
+run_apriori_with_loop <- function(df2, supp_values, conf_values, minlen_values, verbose = FALSE) {
+  result_df <- data.frame()
+
+  for (supp_val in supp_values) {
+    for (conf_val in conf_values) {
+      for (minlen_val in minlen_values) {
+        if (verbose) {
+          print(paste("[INFO] ", "Support:", supp_val, "Confidence:", conf_val, "MinLength:", minlen_val))
+        }
+        rules <- apriori(
+          df2,
+          parameter = list(
+            supp = supp_val,
+            conf = conf_val,
+            minlen = minlen_val
+          ),
+          appearance = list(rhs = c("HadHeartAttack=1", "HadHeartAttack=0")),
+          control = list(verbose = FALSE)
+        )
+        if (length(rules) == 0) { next }
+        red_rules <- rules
+        not_red_rules <- rules[!is.redundant(rules)]
+        rules_conf <- sort(not_red_rules, by = "lift", decreasing = TRUE)
+
+        # Print if there are rules where rhs = HeartAttack=1
+        if (length(rules_conf[rules_conf@rhs %in% "HadHeartAttack=1"]) > 0) {
+          if (verbose) {
+            print(paste("[INFO YES SIRRR] ", "Support:", supp_val, "Confidence:", conf_val, "MinLength:", minlen_val))
+            print(rules_conf[rules_conf@rhs %in% "HadHeartAttack=1"])
+          }
+        }
+
+        result_df <- rbind(
+          result_df,
+          data.frame(
+            Support = supp_val,
+            Confidence = conf_val,
+            MinLength = minlen_val,
+            NumRedundant_Rules = length(red_rules),
+            NumNon_Redundant_Rules = length(rules_conf)
+          )
+        )
+      }
+    }
+  }
+
+  return(result_df)
+}
+```
+
+```{r}
+supp_values <- c(0.3, 0.4)
+conf_values <- c(0.6, 0.7, 0.8, 0.9)
+minlen_values <- c(2, 3)
+
+result_rules <- run_apriori_with_loop(
+  df2,
+  supp_values,
+  conf_values,
+  minlen_values,
+  verbose = TRUE
+)
+result_rules
+```
+
+```{r}
+df3 <- read.csv(here("data", "clean.csv"))
+df3 <- data.frame(lapply(df3, as.factor))
+df3 <- as(df3, "transactions")
+```
+
+
+```{r}
+#checking subsets of size 1 2 3 4Warning: Mining stopped (time limit reached). Only patterns up to a length of 4 returned! done [7.39s].
+rules <- apriori(
+  df3,
+  parameter = list(
+    supp = 0.3,
+    conf = 0.6,
+    minlen = 2,
+    maxlen = 8,
+    maxtime = 1000
+  ),
+  appearance = list(rhs = c("HadHeartAttack=1", "HadHeartAttack=0")),
+)
+#inspect(rules)
+
+# PRint the rules with onoly HadHeartAttack=1
+rules_conf <- sort(rules, by = "lift", decreasing = TRUE)
+inspect(rules_conf[rules_conf@rhs %in% "HadHeartAttack=1"])
+```
+
+Support=0.3, Confidence=0.6, MinLength=2
+Support=0.3, Confidence=0.6, MinLength=3
