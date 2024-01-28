@@ -219,14 +219,13 @@ df <- df |> mutate(across(where(is.character), as.factor))
 str(df)
 summary(df)
 ```
-
-We can observe that it's quite unbalanced, only 5% of observations present having a heart attack:
+Exploring our target variable:
 
 ```{r}
-table(df$HadHeartAttack)
+plot_pie_freq(df$HadHeartAttack, "Heart Attack distribution")
 ```
 
-To solve this class unbalance, we'll employ data [undersampling](https://en.wikipedia.org/wiki/Undersampling) to reduce the amount of observations to the class exhibiting the least frequency; in this case, patients having a heart attack
+We can observe that it's quite unbalanced, only `5.7%` of observations present having a heart attack. To solve this class unbalance, we'll employ data [undersampling](https://en.wikipedia.org/wiki/Undersampling) to reduce the amount of observations to the class exhibiting the least frequency; in this case, patients having a heart attack
 
 ## Raw Data Analysis
 
@@ -390,13 +389,11 @@ ggplot(na_count, aes(x = "", y = Freq, fill = num_na, label = sprintf("%.1f%%", 
 
 As shown by the pie chart above, there are `10.7%` of observations that contain more than 5 NA. These observations could be deemed as impractical for our data analysis due to the extensive data corruption. As such, these could be systematically removed in subsequent stages of the analysis. The decision to remove them instead of manage them is related on the acknowledgment that these observations could mislead the data analysis.
 
-Now, let's explore how the data is represented. We won't consider NA values at this point to avoid issues. Since this is just to get an initial idea of how the data appears, not having cleaned the dataset yet won't be a problem
-
 ## Data cleanup
 
 ### Removal of "corrupted" data
 
-Since we have several rows with many missing values, we will consider them as _corrupt observations_ and proceed to remove them. If the number of missing values in a row exceeds **5**, the corresponding row will be deleted.
+Since we have several rows with many missing values deemed as _corrupt observations_, we'll proceed to remove them. If the number of missing values in a row exceeds **5**, the corresponding row will be deleted.
 
 ```{r NA remove}
 df <- df[rowSums(is.na(df)) <= 5, ]
@@ -460,15 +457,15 @@ df <- df |>
 df <- df |> select(-TetanusLast10Tdap)
 ```
 
-Of the tetanus distribution we can see that it's an unbalanced class, having a `66.5%` of Yes and a `33.5%` of No.
-
 ```{r tetanus plot pie}
 plot_pie_freq(df$TetanusVaccinated, "Tetanus distribution")
 ```
 
+Of the tetanus distribution we can see that it's an unbalanced class, having a `66.5%` of Yes and a `33.5%` of No.
+
 #### Smoker
 
-This class is an interesting one, we have decided to merge
+This class is an interesting one, we have decided to merge `ECigaretteUsage` and `SmokerStatus` as they convey the same semantic information of whether a person has smoked in his life. Firstly, we'll further discretize the values of each class:
 
 ```{r smoke_e_cig}
 df <- df |>
@@ -496,7 +493,7 @@ df <- df |>
   )
 ```
 
-The distribution of the SmokerStatus is the following:
+The distribution of the `SmokerStatus` is the following:
 
 ```{r smoker pie plot}
 plot_pie_freq(df$SmokerStatus, "Smoker distribution")
@@ -504,13 +501,13 @@ plot_pie_freq(df$SmokerStatus, "Smoker distribution")
 
 Even though the classes are unbalanced is not that a big deal compared to others, we have a `60.3%` of Yes and a `39.7%` of No.
 
-The distribution of the EcigaretteUsage is the following:
+The distribution of the `EcigaretteUsage` is the following:
 
 ```{r ecigarrete pie plot}
 plot_pie_freq(df$ECigaretteUsage, "EcigaretteUsage distribution")
 ```
 
-In this case we will need to do something with this class in general because there is too much unbalance. So the idea that came up to our minds was to merge this two, let's explore this possibility later.
+In this case we will need to do something with this class as it presents a high imbalance. As stated above, we plan on merging these two variables; such implementation can be found on further chapters when tackling variable fusion.
 
 #### Race
 
@@ -986,6 +983,9 @@ df %>%
 
 Save the cleaned dataframe to a csv file to be used in the `models.Rmd` file.
 
+```{r}
+str(df)
+```
 ```{r export dataframe}
 write.csv(df, here("data", "clean.csv"))
 ```
