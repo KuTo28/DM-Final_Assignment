@@ -387,7 +387,7 @@ ggplot(na_count, aes(x = "", y = Freq, fill = num_na, label = sprintf("%.1f%%", 
   )
 ```
 
-As shown by the pie chart above, there are `10.7%` of observations that contain more than 5 NA. These observations could be deemed as impractical for our data analysis due to the extensive data corruption. As such, these could be systematically removed in subsequent stages of the analysis. The decision to remove them instead of manage them is related on the acknowledgment that these observations could mislead the data analysis.
+As shown by the pie chart above, there are `10.7%` of observations that contain more than 10 NA. These observations could be deemed as impractical for our data analysis due to the extensive data corruption. As such, these could be systematically removed in subsequent stages of the analysis. The decision to remove them instead of manage them is related on the acknowledgment that these observations could mislead the data analysis.
 
 ## Data cleanup
 

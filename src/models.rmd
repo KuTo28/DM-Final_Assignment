@@ -24,6 +24,7 @@ model_accuracy <- function(name, model, train, test, characteristic) {
 ```
 
 ```{r}
+library(ggplot2)
 library(tidymodels)
 library(GGally)
 library(here)
@@ -233,35 +234,24 @@ text(pca_mod$rotation[, 1:2], labels = (colnames(hd_num)[-1]))
 library(e1071)
 
 modelo_nb <- naiveBayes(HadHeartAttack ~ ., data = train)
-
 predicciones <- predict(modelo_nb, newdata = test)
-
 matriz_confusion <- confusionMatrix(predicciones, test$HadHeartAttack)
 
-print(matriz_confusion)
-
-# Obtener las tablas de probabilidades
-tabla_frecuencias <- table(predicciones, test$HadHeartAttack)
-
-# Imprime la tabla de frecuencias
-print(tabla_frecuencias)
-
-# Calcula la proporción de predicciones correctas para cada nivel de la variable de respuesta
-proporcion_correctas <- diag(prop.table(tabla_frecuencias, margin = 2))
-
-# Imprime la proporción de predicciones correctas para cada nivel de la variable de respuesta
-print(proporcion_correctas)
+df_bayes <- data.frame(
+  Name = "naive bayes",
+  Accuracy = matriz_confusion$overall[[1]],
+  Kap = matriz_confusion$overall[[2]]
+)
 ```
+
 
 ## Asoociation rules
 
-```
-{r}
+```{r}
 df2 <- as(data.frame(lapply(df, as.factor)), "transactions")
 ```
 
-```
-{r}
+```{r}
 # Metodo para sacar los mejores combinaciones de hiperparametros
 run_apriori_with_loop <- function(df2, supp_values, conf_values, minlen_values, verbose = FALSE) {
   result_df <- data.frame()
@@ -270,7 +260,7 @@ run_apriori_with_loop <- function(df2, supp_values, conf_values, minlen_values, 
     for (conf_val in conf_values) {
       for (minlen_val in minlen_values) {
         if (verbose) {
-          print(paste("[INFO] Doinng...", "Support:", supp_val, "Confidence:", conf_val, "MinLength:", minlen_val))
+          print(paste("[INFO] Doing...", "Support:", supp_val, "Confidence:", conf_val, "MinLength:", minlen_val))
         }
         rules <- apriori(
           df2,
@@ -307,8 +297,7 @@ run_apriori_with_loop <- function(df2, supp_values, conf_values, minlen_values, 
 }
 ```
 
-```
-{r}
+```{r}
 supp_values <- c(0.3, 0.4)
 conf_values <- c(0.6, 0.7, 0.8, 0.9)
 minlen_values <- c(2, 3)
@@ -323,8 +312,7 @@ result_rules <- run_apriori_with_loop(
 result_rules
 ```
 
-```
-{r}
+```{r}
 rules <- apriori(
   df2,
   parameter = list(
@@ -336,3 +324,240 @@ rules <- apriori(
   control = list(verbose = FALSE)
 )
 ```
+
+After extracting the best hyper-parameters and searching for association rules, we can observe that we haven't managed to extract enough rules with sufficient confidence. Out of approximately 2000 non-redundant rules, only 8 of them have a confidence greater than 0.7. Therefore, they are not a reliable indicator either to determine if a patient suffered a heart attack or to identify the risk factors.
+
+## Model results
+
+Once we have all the models, we can compare them to see which one is the best:
+
+```{r}
+df_res <- data.frame(row.names = c("Name", "Accuracy", "Kap"))
+for (result in model_results) {
+  tmp <- data.frame(
+    Name = result$name,
+    Accuracy = result$metrics$accuracy,
+    Kap = result$metrics$kap
+  )
+
+  df_res <- rbind(df_res, tmp)
+}
+
+df_res <- rbind(df_res, df_bayes)
+df_res <- df_res[order(-df_res$Accuracy, decreasing = FALSE), ]
+df_res
+```
+
+```{r}
+library(gridExtra)
+grid.arrange(
+  ggplot(df_res, aes(x = Name, y = Kap, fill = Name)) +
+    geom_bar(stat = "identity") +
+    labs(title = "Kappa por Modelo", x = "Modelo", y = "Kappa") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)),
+  ggplot(df_res, aes(x = Name, y = Accuracy, fill = Name)) +
+    geom_bar(stat = "identity") +
+    labs(title = "Accuracy por Modelo", x = "Modelo", y = "Accuracy") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)),
+  ncol = 2
+)
+```
+
+As we can see, the models have a very similar accuracy and kappa values, making it difficult to choose one over the other. However, we will choose the models that the result of the model can be explained, such as the decision tree, random forest and Naive Bayes.
+
+## Model explanation
+
+```{r}
+library(rpart.plot)
+library(rattle)
+library(vip)
+```
+
+### Decision tree
+
+```{r}
+rpart.plot(model_results[[3]]$model$fit, type = 4, extra = 1)
+```
+
+Upon splitting the data using the decision tree, we can appreciate that the most important features are `HadAngina`, `ChestScan`, `AgeCategory`, `HadStroke`, and `GeneralHealth`.
+
+### Random forest
+
+```{r}
+tree <- model_results[[4]]$model$fit$variable.importance
+importance <- (tree / sum(tree)) * 100
+
+df_importancia <- data.frame(importance)
+
+ggplot(df_importancia, aes(x = rownames(df_importancia), y = porcentaje_importancia, fill = rownames(df_importancia))) +
+  geom_bar(stat = "identity", color = "black") +
+  labs(title = "Variable importance", x = "Variable", y = "Porcentaje") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none")
+```
+
+As we can see, the most important variable is `HadAngina` with a big difference from the rest of the variables, nearly a 25% of importance.
+
+### XGBoost
+
+```{r}
+vip(model_results[[8]]$model$fit)
+```
+
+In this model we can observe that the dominant variable is `hadAngina` with a value near to 60% meanwhile the the second characteristic, `ChestScan`, is less than a 20%.
+
+
+### Naive Bayes
+
+```{r}
+freq <- t(data.frame(modelo_nb$tables))
+colnames(freq)[colnames(freq) == "0"] <- "No"
+colnames(freq)[colnames(freq) == "1"] <- "Yes"
+freq <- data.frame(freq)
+
+ggplot(freq, aes(x = rownames(freq), y = Yes, fill = rownames(freq))) +
+  geom_bar(stat = "identity", color = "black") +
+  labs(title = "Naive Bayes Variable importance for Yes", x = "Variable", y = "Porcentaje") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "none")
+```
+### Linear Regression
+
+
+```{r}
+library(broom)
+coefs <- tidy(model_results[[1]]$model, conf.int = TRUE)
+```
+
+```{r}
+ggplot(coefs, aes(x = reorder(term, estimate), y = estimate, fill = estimate > 0)) +
+  geom_bar(stat = "identity", position = "identity", color = "black") +
+  coord_flip() +
+  labs(title = "Importancia de Coeficientes",
+       x = "Coeficientes",
+       y = "Valor") +
+  scale_fill_manual(values = c("red", "green")) +
+  theme_minimal()
+```
+
+### MultiLayer Perceptron
+
+```{r}
+coefs <- coef(model_results[[7]]$model$fit)
+coefs_df <- data.frame(term = names(coefs), estimate = coefs)
+
+ggplot(coefs_df, aes(x = reorder(term, estimate), y = estimate, fill = estimate > 0)) +
+  geom_bar(stat = "identity", position = "identity", color = "black") +
+  coord_flip() +
+  labs(title = "Importancia de Pesos de Conexiones en MLP",
+       x = "Conexiones",
+       y = "Peso",
+       subtitle = "Coeficientes de Pesos de Conexiones en MLP") +
+  scale_fill_manual(values = c("red", "green")) +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 8, hjust = 0.5), axis.text.x = element_blank())
+```
+```{r}
+top_coefs <- coefs_df %>% 
+  arrange(desc(abs(estimate))) %>% 
+  head(10)
+
+ggplot(top_coefs, aes(x = reorder(term, estimate), y = estimate, fill = estimate > 0)) +
+  geom_bar(stat = "identity", position = "identity", color = "black") +
+  labs(title = "Top 10 Coeficientes de Pesos de Conexiones en MLP",
+       x = "Conexiones",
+       y = "Peso",
+       subtitle = "Los 10 coeficientes más importantes de Pesos de Conexiones en MLP") +
+  scale_fill_manual(values = c("red", "green")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), axis.title.x = element_blank())
+```
+
+### LDA
+
+```{r}
+coefs_lda <- model_results[[9]]$model$fit
+
+coefs_df <- data.frame(
+  term = rownames(coefs_lda$scaling),
+  estimate = coefs_lda$scaling[, 1]  # Tomar solo la primera columna (pueden haber más si hay más clases)
+)
+
+# Crear un gráfico de barras para visualizar los coeficientes
+ggplot(coefs_df, aes(x = reorder(term, estimate), y = estimate, fill = estimate > 0)) +
+  geom_bar(stat = "identity", position = "identity", color = "black") +
+  labs(title = "Coeficientes de Análisis Discriminante Lineal (LDA)",
+       x = "Predictores",
+       y = "Coeficiente",
+       subtitle = "Importancia de los coeficientes en el modelo lda") +
+  scale_fill_manual(values = c("red", "green")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+        axis.title.x = element_blank())
+```
+
+```{r}
+df_means_long <- data.frame(t(data.frame(coefs_lda$means)))
+
+ggplot(df_means_long, aes(x = rownames(df_means_long), y = X0, fill = rownames(df_means_long))) +
+  geom_bar(stat = "identity", color = "black") +
+  labs(title = "Valores Medios de Grupo por Variable", x = "Variable", y = "Valor Medio") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "none")
+
+ggplot(df_means_long, aes(x = rownames(df_means_long), y = X1, fill = rownames(df_means_long))) +
+  geom_bar(stat = "identity", color = "black") +
+  labs(title = "Valores Medios de Grupo por Variable", x = "Variable", y = "Valor Medio") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "none")
+```
+
+
+### QDA
+
+```{r}
+coefs_lda <- model_results[[10]]$model$fit
+
+coefs_df <- data.frame(
+  term = rownames(coefs_lda$scaling),
+  estimate = coefs_lda$scaling[, 1]
+)
+
+# Crear un gráfico de barras para visualizar los coeficientes
+ggplot(coefs_df, aes(x = reorder(term, estimate), y = estimate, fill = estimate > 0)) +
+  geom_bar(stat = "identity", position = "identity", color = "black") +
+  labs(title = "Coeficientes de Análisis Discriminante Lineal (LDA)",
+       x = "Predictores",
+       y = "Coeficiente",
+       subtitle = "Importancia de los coeficientes en el modelo lda") +
+  scale_fill_manual(values = c("red", "green")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), axis.title.x = element_blank())
+```
+
+```{r}
+df_means_long <- data.frame(t(data.frame(coefs_lda$means)))
+
+ggplot(df_means_long, aes(x = rownames(df_means_long), y = X0, fill = rownames(df_means_long))) +
+  geom_bar(stat = "identity", color = "black") +
+  labs(title = "Valores Medios de Grupo por Variable", x = "Variable", y = "Valor Medio") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "none")
+
+ggplot(df_means_long, aes(x = rownames(df_means_long), y = X1, fill = rownames(df_means_long))) +
+  geom_bar(stat = "identity", color = "black") +
+  labs(title = "Valores Medios de Grupo por Variable", x = "Variable", y = "Valor Medio") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "none")
+```
+
+
+
+
+
+
+
+
+
+
+
