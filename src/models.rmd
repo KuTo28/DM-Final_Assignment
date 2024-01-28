@@ -2,18 +2,18 @@
 model_accuracy <- function(name, model, train, test, characteristic) {
   cat("[DOING]", name, "\n")
   fitted_model <- model |>
-    fit(as.formula(paste(characteristic, "~ .")), data = train) # nolint
+    fit(as.formula(paste(characteristic, "~ .")), data = train)
 
   pred <- fitted_model |>
     predict(test) |>
-    pull(.pred_class) # nolint
+    pull(.pred_class)
 
   results <- test |>
-    mutate(predictions = pred) |> # nolint
-    metrics(truth = !!as.name(characteristic), estimate = predictions) |> # nolint
-    filter(.metric %in% c("accuracy", "kap")) |> # nolint
-    pivot_wider(names_from = .metric, values_from = .estimate) |> # nolint
-    select(accuracy, kap) # nolint
+    mutate(predictions = pred) |>
+    metrics(truth = !!as.name(characteristic), estimate = predictions) |>
+    filter(.metric %in% c("accuracy", "kap")) |>
+    pivot_wider(names_from = .metric, values_from = .estimate) |>
+    select(accuracy, kap)
 
   return(list(
     "name" = name,
@@ -312,6 +312,8 @@ result_rules <- run_apriori_with_loop(
 result_rules
 ```
 
+After extracting the best hyper-parameters and searching for association rules, we can observe that we haven't managed to extract enough rules with sufficient confidence. Out of approximately 2000 non-redundant rules, only 8 of them have a confidence greater than 0.7. Therefore, they are not a reliable indicator either to determine if a patient suffered a heart attack or to identify the risk factors.
+
 ```{r}
 rules <- apriori(
   df2,
@@ -325,7 +327,10 @@ rules <- apriori(
 )
 ```
 
-After extracting the best hyper-parameters and searching for association rules, we can observe that we haven't managed to extract enough rules with sufficient confidence. Out of approximately 2000 non-redundant rules, only 8 of them have a confidence greater than 0.7. Therefore, they are not a reliable indicator either to determine if a patient suffered a heart attack or to identify the risk factors.
+```{r}
+plot(rules, method = "two-key plot")
+plot(rules, method = "graph")
+```
 
 ## Model results
 
@@ -363,7 +368,7 @@ grid.arrange(
 )
 ```
 
-As we can see, the models have a very similar accuracy and kappa values, making it difficult to choose one over the other. However, we will choose the models that the result of the model can be explained, such as the decision tree, random forest and Naive Bayes.
+As we can see, the models have a very similar accuracy and kappa values, making it difficult to choose one over the other. However, we will choose the models that the result of the model can be explained, such as the decision tree, random forest, xgboost, Naive Bayes, logistic regression, multiLayer perceptron, LDA and QDA.
 
 ## Model explanation
 
@@ -406,7 +411,6 @@ vip(model_results[[8]]$model$fit)
 
 In this model we can observe that the dominant variable is `hadAngina` with a value near to 60% meanwhile the the second characteristic, `ChestScan`, is less than a 20%.
 
-
 ### Naive Bayes
 
 ```{r}
@@ -421,6 +425,17 @@ ggplot(freq, aes(x = rownames(freq), y = Yes, fill = rownames(freq))) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "none")
 ```
+
+```{r}
+ggplot(freq, aes(x = rownames(freq), y = No, fill = rownames(freq))) +
+  geom_bar(stat = "identity", color = "black") +
+  labs(title = "Naive Bayes Variable importance for No", x = "Variable", y = "Porcentaje") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "none")
+```
+
+With this models we have a little of variance between the importance of the variables depending of the predicted value. In botsh cases the most dominant characteristic is State being the 'yes' value more significant, having near a 30% of the importance of the variables. However variables like Age `AgeCategory` when the `HadHeartAttack` value is yes the `AgeCategory` has a 5% importance while in the other case the importance of the variables is less than 5%.
+
 ### Linear Regression
 
 
@@ -440,6 +455,8 @@ ggplot(coefs, aes(x = reorder(term, estimate), y = estimate, fill = estimate > 0
   theme_minimal()
 ```
 
+Observing this plot the most important variables are `HadAngina` with an importance near to 50% and `HadStroke` with a 20%
+
 ### MultiLayer Perceptron
 
 ```{r}
@@ -457,9 +474,10 @@ ggplot(coefs_df, aes(x = reorder(term, estimate), y = estimate, fill = estimate 
   theme_minimal() +
   theme(axis.text.y = element_text(size = 8, hjust = 0.5), axis.text.x = element_blank())
 ```
+
 ```{r}
-top_coefs <- coefs_df %>% 
-  arrange(desc(abs(estimate))) %>% 
+top_coefs <- coefs_df %>%
+  arrange(desc(abs(estimate))) %>%
   head(10)
 
 ggplot(top_coefs, aes(x = reorder(term, estimate), y = estimate, fill = estimate > 0)) +
@@ -472,6 +490,8 @@ ggplot(top_coefs, aes(x = reorder(term, estimate), y = estimate, fill = estimate
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), axis.title.x = element_blank())
 ```
+
+With the full conecctions of characteristics was difficult to visualize correctcly the most significant characteristics so we filter them to take the 10 most importants, the problem with this model is that is difficult to interpret the result so this model will not help us to answer our question.
 
 ### LDA
 
@@ -512,6 +532,7 @@ ggplot(df_means_long, aes(x = rownames(df_means_long), y = X1, fill = rownames(d
   theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "none")
 ```
 
+The result of this model tells us that the dominant variables are `HadAngina` with a coefficient bigger than 1.5, then we have `HadStroke`, `ChestScan` and `Gender` with coefficients near 0.5.
 
 ### QDA
 
@@ -551,13 +572,40 @@ ggplot(df_means_long, aes(x = rownames(df_means_long), y = X1, fill = rownames(d
   theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "none")
 ```
 
+## Making predictions for `HadHeartAttack` missing values
 
+```{r}
+results <- data.frame(
+  "name" = character(),
+  "result" = character()
+)
 
+for (result in model_results) {
+  print(paste("[INFO] Doing...", result$name))
+  pred <- result$model |>
+    predict(heart_attack_target) |>
+    pull(.pred_class)
 
+  tmp <- data.frame(
+    "name" = result$name,
+    "result" = pred
+  )
 
+  results <- rbind(results, tmp)
+}
+```
 
+```{r}
+frequency_results <- results %>%
+  group_by(name, result) %>%
+  summarise(frequency = n()) %>%
+  mutate(percentage = (frequency / sum(frequency)) * 100) %>%
+  mutate(result = ifelse(result == 0, "No", "Yes"))
 
-
-
-
-
+ggplot(frequency_results, aes(x = name, y = percentage, fill = result)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Porcentaje de Resultados por Modelo y Categoría",
+       x = "Modelo", y = "Porcentaje") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```

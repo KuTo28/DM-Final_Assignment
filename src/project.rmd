@@ -47,6 +47,7 @@ The original dataset consist of 445132 observations with 40 variables of categor
 Formally, we aim to address whether a patient will experience a heart attack by employing an array of predictive models and selecting the most frequent result. Furthermore, we'll provide the features that most contribute to this prediction analyzing some of the used models.
 
 For it, we'll need to clean the data set to best fit our predictive models by:
+
 - Reducing the amount of features
 - Apply feature engineering
 - Merge variables that present high colinearity
@@ -57,6 +58,7 @@ For it, we'll need to clean the data set to best fit our predictive models by:
 Here we define a set of functions that might prove useful to increase the readability of the code
 
 This function will be used to train and evaluate different models.
+
 ```{r predictive_model helper}
 model_accuracy <- function(model, train, test, characteristic) {
   fitted_model <- model |>
@@ -78,6 +80,7 @@ model_accuracy <- function(model, train, test, characteristic) {
 ```
 
 Function used to obtain the statistics of a model.
+
 ```{r stats model helper}
 model_statistics <- function(num_samples, target_variable, dataframe) {
   df2 <- dataframe
@@ -109,6 +112,7 @@ model_statistics <- function(num_samples, target_variable, dataframe) {
 ```
 
 Function to plot pie plots
+
 ```{r plot pie helper}
 plot_pie_freq <- function(variable, plot_name) {
   data <- data.frame(table(variable))
@@ -134,6 +138,7 @@ plot_pie_freq <- function(variable, plot_name) {
 ```
 
 Functions to make dendrograms.
+
 ```{r hclust helper}
 perform_hclust <- function(data, method, num_clusters) {
   hc <- hclust(dist(data), method = method)
@@ -219,6 +224,7 @@ df <- df |> mutate(across(where(is.character), as.factor))
 str(df)
 summary(df)
 ```
+
 Exploring our target variable:
 
 ```{r}
@@ -305,6 +311,7 @@ ggplot(
 In this table we can see the percentages of NA's for each column of the dataset. The column with the highest amount of NA's is `TetanusLast10TDap` `(9.1%)` and the one with the least of amount are `HadDiabetes` and `PhysicalActivities` `(0.12%)`. Because of the different types of variables, we are going to take care of the NA's in different ways.
 
 As the amount of NA values is considerable, we'll study the distribution of them per rows to further identify the severity of these missing values:
+
 ```{r df NA_row}
 na_group_threshold <- 5
 
@@ -569,6 +576,7 @@ Even though we have tried to balance the classes we can see that there is a high
 #### Removed Teeth
 
 For `RemovedTeeth` we have suposse that if we don't know if any teeth has been removed None of them have been removed.
+
 ```{r}
 df <- df |>
   mutate(
@@ -911,7 +919,7 @@ Exploring the BMI distribution
 boxplot(df$BMI)
 ```
 
-Seeing the distribution of the BMI, we can see that there are some outliers, to deal with them we'll group them into categories based on the CDC's BMI classification. See [this](https://www.cdc.gov/obesity/basics/adult-defining.html#:~:text=If%20your%20BMI%20is%20less,falls%20within%20the%20obesity%20range) link:  The categories are:
+Seeing the distribution of the BMI, we can see that there are some outliers, to deal with them we'll group them into categories based on the CDC's BMI classification. See [this](https://www.cdc.gov/obesity/basics/adult-defining.html#:~:text=If%20your%20BMI%20is%20less,falls%20within%20the%20obesity%20range) link: The categories are:
 
 - Underweight: BMI is less than 18.5
 - Healthy weight: BMI is 18.5 to 24.9
@@ -986,6 +994,7 @@ Save the cleaned dataframe to a csv file to be used in the `models.Rmd` file.
 ```{r}
 str(df)
 ```
+
 ```{r export dataframe}
 write.csv(df, here("data", "clean.csv"))
 ```
@@ -1009,8 +1018,7 @@ write.csv(BMI_subset, here("data", "BMI.csv"))
 ```
 
 ```{r BMI_heart_attack_state}
-# Color to state the amount of heart attacks per state
-# number to say the BMI Of the state
+BMI_subset <- read.csv(here("data", "BMI.csv"))
 
 state_abbreviations <- c("DC", "GU", "PR", "VI")
 
@@ -1059,8 +1067,13 @@ sb <- statebins(
     strip.background = element_blank()
   )
 
+max_bmi_state <- BMI_state[which.max(BMI_state$mean_BMI), "StateAbb"]
+min_bmi_state <- BMI_state[which.min(BMI_state$mean_BMI), "StateAbb"]
+
 # https://stackoverflow.com/questions/76574854/how-to-add-count-labels-to-statebin-map
 sb <- ggplot_build(sb)
+sb$data[[2]]$colour[sb$data[[2]]$label %in% max_bmi_state] <- "red"
+sb$data[[2]]$colour[sb$data[[2]]$label %in% min_bmi_state] <- "green"
 sb$data[[2]]$label <- BMI_state$lab[match(sb$data[[2]]$label, BMI_state$StateAbb)]
 sb <- ggplot_gtable(sb)
 
