@@ -100,20 +100,6 @@ models <- list(
     )
   ),
   list(
-    "name" = "svm_linear",
-    "model" = svm_linear(
-      mode = "classification",
-      engine = "kernlab",
-    )
-  ),
-  list(
-    "name" = "svm_rbf",
-    "model" = svm_rbf(
-      mode = "classification",
-      engine = "kernlab",
-    )
-  ),
-  list(
     "name" = "decision_tree",
     "model" = decision_tree(
       mode = "classification",
@@ -190,29 +176,7 @@ model_results <- map(models, ~ model_accuracy(
 ))
 ```
 
-```{r model feature importance}
-# logistical, decision_tree, rand_forest, nn
-# model_results[[2]]$model$fit %>%
-#  vip(num_features = 20)
-```
-
-```{r}
-f_importances <- function(coef, names) {
-  imp <- coef
-  ordering <- order(imp)
-  imp <- imp[ordering]
-  names <- names[ordering]
-  barplot(imp, names.arg = names, horiz = TRUE, col = "lightblue", main = "Feature Importances")
-}
-
-svm_fit <- coef(model_results[[2]]$model$fit)
-
-svm_fit
-# Visualizar la importancia de características
-f_importances(svm_fit, colnames(svm_fit$workflow$steps$svm_linear$fit$fit$call$x))
-```
-
-## PCA
+o ## PCA
 
 ```{r}
 hd_num <- mutate_if(df, is.character, as.factor)
@@ -272,9 +236,11 @@ run_apriori_with_loop <- function(df2, supp_values, conf_values, minlen_values, 
           appearance = list(rhs = c("HadHeartAttack=1", "HadHeartAttack=0")),
           control = list(verbose = FALSE)
         )
+
         if (length(rules) == 0) {
           next
         }
+
         red_rules <- rules
         not_red_rules <- rules[!is.redundant(rules)]
         rules_conf <- sort(not_red_rules, by = "lift", decreasing = TRUE)
@@ -309,6 +275,7 @@ result_rules <- run_apriori_with_loop(
   minlen_values,
   verbose = TRUE
 )
+
 result_rules
 ```
 
@@ -339,13 +306,14 @@ Once we have all the models, we can compare them to see which one is the best:
 ```{r}
 df_res <- data.frame(row.names = c("Name", "Accuracy", "Kap"))
 for (result in model_results) {
-  tmp <- data.frame(
-    Name = result$name,
-    Accuracy = result$metrics$accuracy,
-    Kap = result$metrics$kap
+  df_res <- rbind(
+    df_res,
+    data.frame(
+      Name = result$name,
+      Accuracy = result$metrics$accuracy,
+      Kap = result$metrics$kap
+    )
   )
-
-  df_res <- rbind(df_res, tmp)
 }
 
 df_res <- rbind(df_res, df_bayes)
@@ -381,7 +349,7 @@ library(vip)
 ### Decision tree
 
 ```{r}
-rpart.plot(model_results[[3]]$model$fit, type = 4, extra = 1)
+rpart.plot(model_results[[3]]$model$fit, type = 4, extra = 1, roundint = FALSE)
 ```
 
 Upon splitting the data using the decision tree, we can appreciate that the most important features are `HadAngina`, `ChestScan`, `AgeCategory`, `HadStroke`, and `GeneralHealth`.
@@ -394,7 +362,7 @@ importance <- (tree / sum(tree)) * 100
 
 df_importancia <- data.frame(importance)
 
-ggplot(df_importancia, aes(x = rownames(df_importancia), y = porcentaje_importancia, fill = rownames(df_importancia))) +
+ggplot(df_importancia, aes(x = rownames(df_importancia), y = importance, fill = rownames(df_importancia))) +
   geom_bar(stat = "identity", color = "black") +
   labs(title = "Variable importance", x = "Variable", y = "Porcentaje") +
   theme_minimal() +
@@ -438,7 +406,6 @@ With this models we have a little of variance between the importance of the vari
 
 ### Linear Regression
 
-
 ```{r}
 library(broom)
 coefs <- tidy(model_results[[1]]$model, conf.int = TRUE)
@@ -448,9 +415,11 @@ coefs <- tidy(model_results[[1]]$model, conf.int = TRUE)
 ggplot(coefs, aes(x = reorder(term, estimate), y = estimate, fill = estimate > 0)) +
   geom_bar(stat = "identity", position = "identity", color = "black") +
   coord_flip() +
-  labs(title = "Importancia de Coeficientes",
-       x = "Coeficientes",
-       y = "Valor") +
+  labs(
+    title = "Importancia de Coeficientes",
+    x = "Coeficientes",
+    y = "Valor"
+  ) +
   scale_fill_manual(values = c("red", "green")) +
   theme_minimal()
 ```
@@ -466,10 +435,12 @@ coefs_df <- data.frame(term = names(coefs), estimate = coefs)
 ggplot(coefs_df, aes(x = reorder(term, estimate), y = estimate, fill = estimate > 0)) +
   geom_bar(stat = "identity", position = "identity", color = "black") +
   coord_flip() +
-  labs(title = "Importancia de Pesos de Conexiones en MLP",
-       x = "Conexiones",
-       y = "Peso",
-       subtitle = "Coeficientes de Pesos de Conexiones en MLP") +
+  labs(
+    title = "Importancia de Pesos de Conexiones en MLP",
+    x = "Conexiones",
+    y = "Peso",
+    subtitle = "Coeficientes de Pesos de Conexiones en MLP"
+  ) +
   scale_fill_manual(values = c("red", "green")) +
   theme_minimal() +
   theme(axis.text.y = element_text(size = 8, hjust = 0.5), axis.text.x = element_blank())
@@ -482,10 +453,12 @@ top_coefs <- coefs_df %>%
 
 ggplot(top_coefs, aes(x = reorder(term, estimate), y = estimate, fill = estimate > 0)) +
   geom_bar(stat = "identity", position = "identity", color = "black") +
-  labs(title = "Top 10 Coeficientes de Pesos de Conexiones en MLP",
-       x = "Conexiones",
-       y = "Peso",
-       subtitle = "Los 10 coeficientes más importantes de Pesos de Conexiones en MLP") +
+  labs(
+    title = "Top 10 Coeficientes de Pesos de Conexiones en MLP",
+    x = "Conexiones",
+    y = "Peso",
+    subtitle = "Los 10 coeficientes más importantes de Pesos de Conexiones en MLP"
+  ) +
   scale_fill_manual(values = c("red", "green")) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), axis.title.x = element_blank())
@@ -500,20 +473,24 @@ coefs_lda <- model_results[[9]]$model$fit
 
 coefs_df <- data.frame(
   term = rownames(coefs_lda$scaling),
-  estimate = coefs_lda$scaling[, 1]  # Tomar solo la primera columna (pueden haber más si hay más clases)
+  estimate = coefs_lda$scaling[, 1] # Tomar solo la primera columna (pueden haber más si hay más clases)
 )
 
 # Crear un gráfico de barras para visualizar los coeficientes
 ggplot(coefs_df, aes(x = reorder(term, estimate), y = estimate, fill = estimate > 0)) +
   geom_bar(stat = "identity", position = "identity", color = "black") +
-  labs(title = "Coeficientes de Análisis Discriminante Lineal (LDA)",
-       x = "Predictores",
-       y = "Coeficiente",
-       subtitle = "Importancia de los coeficientes en el modelo lda") +
+  labs(
+    title = "Coeficientes de Análisis Discriminante Lineal (LDA)",
+    x = "Predictores",
+    y = "Coeficiente",
+    subtitle = "Importancia de los coeficientes en el modelo lda"
+  ) +
   scale_fill_manual(values = c("red", "green")) +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
-        axis.title.x = element_blank())
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+    axis.title.x = element_blank()
+  )
 ```
 
 ```{r}
@@ -547,10 +524,12 @@ coefs_df <- data.frame(
 # Crear un gráfico de barras para visualizar los coeficientes
 ggplot(coefs_df, aes(x = reorder(term, estimate), y = estimate, fill = estimate > 0)) +
   geom_bar(stat = "identity", position = "identity", color = "black") +
-  labs(title = "Coeficientes de Análisis Discriminante Lineal (LDA)",
-       x = "Predictores",
-       y = "Coeficiente",
-       subtitle = "Importancia de los coeficientes en el modelo lda") +
+  labs(
+    title = "Coeficientes de Análisis Discriminante Lineal (LDA)",
+    x = "Predictores",
+    y = "Coeficiente",
+    subtitle = "Importancia de los coeficientes en el modelo lda"
+  ) +
   scale_fill_manual(values = c("red", "green")) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), axis.title.x = element_blank())
@@ -586,12 +565,13 @@ for (result in model_results) {
     predict(heart_attack_target) |>
     pull(.pred_class)
 
-  tmp <- data.frame(
-    "name" = result$name,
-    "result" = pred
+  results <- rbind(
+    results,
+    data.frame(
+      "name" = result$name,
+      "result" = pred
+    )
   )
-
-  results <- rbind(results, tmp)
 }
 ```
 
@@ -604,8 +584,29 @@ frequency_results <- results %>%
 
 ggplot(frequency_results, aes(x = name, y = percentage, fill = result)) +
   geom_bar(stat = "identity", position = "dodge") +
-  labs(title = "Porcentaje de Resultados por Modelo y Categoría",
-       x = "Modelo", y = "Porcentaje") +
+  labs(
+    title = "Porcentaje de Resultados por Modelo y Categoría",
+    x = "Modelo", y = "Porcentaje"
+  ) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
+
+```{r doktor}
+doktor <- function(observation, models) {
+  predictions <- map( # nolint
+    models, ~ .$model |>
+      predict(observation) |>
+      pull(.pred_class)
+  ) |>
+    unlist() |>
+    table() |>
+    prop.table()
+
+  return(predictions)
+}
+
+doktor(heart_attack_target[1, ], model_results)
+```
+
+As such, using the `doktor` function any user or programmer could predict given the transformation pipeline expressed on this paper with a `softmax`-like result.
