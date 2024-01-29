@@ -187,6 +187,77 @@ make_hclust <- function(variable, plot_name) {
 }
 ```
 
+A fine tuned implementation of the training loop
+```{r model_training helper}
+apply_model_training <- function(name, model, train, test, characteristic) {
+  cat("[DOING]", name, "\n")
+  fitted_model <- model |>
+    fit(as.formula(paste(characteristic, "~ .")), data = train) # nolint
+
+  pred <- fitted_model |>
+    predict(test) |>
+    pull(.pred_class) # nolint
+
+  results <- test |>
+    mutate(predictions = pred) |> # nolint
+    metrics(truth = !!as.name(characteristic), estimate = predictions) |> # nolint
+    filter(.metric %in% c("accuracy", "kap")) |> # nolint
+    pivot_wider(names_from = .metric, values_from = .estimate) |> # nolint
+    select(accuracy, kap) # nolint
+
+  return(list(
+    "name" = name,
+    "model" = fitted_model,
+    "metrics" = as.data.frame(results)
+  ))
+}
+```
+
+An exhaustive apriori helper that permutates the list of parameters and applies apriori on each of them, allowing the exploration of the hyperparameters domain
+```{r apriori helper}
+run_apriori_with_loop <- function(transactions, supp_values, conf_values, minlen_values, verbose = FALSE) {
+  result_df <- data.frame()
+
+  for (supp_val in supp_values) {
+    for (conf_val in conf_values) {
+      for (minlen_val in minlen_values) {
+        if (verbose) {
+          cat("[INFO] Doing...", "Support:", supp_val, "Confidence:", conf_val, "MinLength:", minlen_val, "\n")
+        }
+        rules <- apriori(
+          transactions,
+          parameter = list(
+            supp = supp_val,
+            conf = conf_val,
+            minlen = minlen_val
+          ),
+          appearance = list(
+            rhs = c("HadHeartAttack=1", "HadHeartAttack=0")
+          ),
+          control = list(verbose = FALSE)
+        )
+
+        if (length(rules) == 0) {
+          next
+        }
+
+        result_df <- rbind(
+          result_df,
+          data.frame(
+            Support = supp_val,
+            Confidence = conf_val,
+            MinLength = minlen_val,
+            Redundant_Rules = length(rules[is.redundant(rules)]),
+            Non_Redundant_Rules = length(rules[!is.redundant(rules)])
+          )
+        )
+      }
+    }
+  }
+
+  return(result_df)
+}
+```
 ## Setup
 
 ```{r libraries, message=FALSE}
@@ -902,11 +973,6 @@ df <- df |> select(-WeightInKilograms, -HeightInMeters)
 
 ```{r sandbox BMI}
 BMI_subset <- subset(df, select = c("State", "BMI", "HadHeartAttack"))
-# DEBUG
-df |>
-  select(where(~ any(is.na(.)))) |>
-  mutate(across(where(is.character), as.factor)) |>
-  summary()
 ```
 
 After the calculation we can remove `WeightInKilograms` and `HeightInMeters` because they are redundant once we have BMI.
@@ -969,16 +1035,17 @@ str(df)
 ### NA check
 
 ```{r sandbox2}
-df %>%
+na_summary <- df %>%
   summarise_all(~ sum(is.na(.))) %>%
-  select_if(~ . > 0)
+  select_if(~ . > 0) |>
+  select(-HadHeartAttack)
 ```
 
 Seeing this amount of NA's we have concluded that the best way to take care of them is to add them to the class with least amount of observations for each variable with the objective of slightly balance the classes. As `HadHeartAttack` is our target, we won't be replacing any NA values, instead, this subset will be used as input to our final predictive function.
 
 ```{r}
 df <- df %>%
-  mutate(across(-HadHeartAttack, ~ ifelse(is.na(.), which.min(table(.)), .)))
+  mutate(across(colnames(na_summary), ~ ifelse(is.na(.), which.min(table(.)), .)))
 ```
 
 ```{r sandbox3}
@@ -990,10 +1057,6 @@ df %>%
 ### Export cleaned dataframe to csv
 
 Save the cleaned dataframe to a csv file to be used in the `models.Rmd` file.
-
-```{r}
-str(df)
-```
 
 ```{r export dataframe}
 write.csv(df, here("data", "clean.csv"))
@@ -1013,13 +1076,7 @@ ggcorr(
 
 !TODO Explain some patters of the correlation matrix that seem interesting for our paper
 
-```{r}
-write.csv(BMI_subset, here("data", "BMI.csv"))
-```
-
 ```{r BMI_heart_attack_state}
-BMI_subset <- read.csv(here("data", "BMI.csv"))
-
 state_abbreviations <- c("DC", "GU", "PR", "VI")
 
 str(BMI_subset)
@@ -1115,3 +1172,507 @@ statebins(
     plot.title = element_text(hjust = 0.5)
   )
 ```
+
+## Data prediction
+
+```{r prediction libraries, message=FALSE}
+library(ggplot2)
+library(tidymodels)
+library(GGally)
+library(here)
+library(caret)
+library(vip)
+library(discrim)
+library(gridExtra)
+library(e1071)
+library(rpart.plot)
+library(rattle)
+library(vip)
+library(broom)
+
+# Association rules
+library(arules)
+library(arulesViz)
+
+library(conflicted)
+conflicts_prefer(dplyr::setdiff)
+conflicts_prefer(dplyr::filter)
+conflicts_prefer(dplyr::select)
+```
+
+```{r}
+df <- df |>
+  mutate(across(where(is.factor), as.numeric))
+```
+### Data split
+
+We'll first separate the observations that contain a non numeric `HadHeartAttack`. The objective of this separation is to facilitate the predicion of `HadHeartAttack` values in future stages of the paper
+
+```{r data}
+heart_attack_target <- df[is.na(df$HadHeartAttack), ] # 2116
+df <- df[!is.na(df$HadHeartAttack), ]
+df <- df |>
+  mutate(HadHeartAttack = as.factor(HadHeartAttack))
+```
+
+Given that, we apply undersampling of the variable `HadHeartAttack`, as to offer a balanced dataset to our predictive models
+
+```{r undersampling}
+had_heart_attack <- df[df$HadHeartAttack == 1, ]
+
+had_not_heart_attack <- df[df$HadHeartAttack == 0, ] |>
+  slice_sample(n = nrow(had_heart_attack))
+
+df <- Reduce(
+  function(x, y) merge(x, y, all = TRUE),
+  list(had_heart_attack, had_not_heart_attack)
+)
+```
+
+Finally, a training and testing subset of the data is created with a ratio of 70% to 30%; 70% to train and 30% to test with `HadHeartAttack` as our target
+
+```{r data_split}
+df_split <- initial_split(na.omit(df), prop = 0.70, strata = HadHeartAttack)
+train <- training(df_split)
+test <- testing(df_split)
+```
+
+To best study the capabilities of the cleaned dataset, and to not settle to one model, an arrangement of predictive models has been defined. All of them will be trained with the same data split, as to not create misleading accuracy discrepancies.
+
+```{r training, warning=FALSE}
+models <- list(
+  list(
+    "name" = "logistical",
+    "model" = logistic_reg(
+      mode = "classification",
+      engine = "glm",
+    )
+  ),
+  list(
+    "name" = "nearest_neighbor",
+    "model" = nearest_neighbor(
+      mode = "classification",
+      engine = "kknn",
+      neighbors = 10
+    )
+  ),
+  list(
+    "name" = "decision_tree",
+    "model" = decision_tree(
+      mode = "classification",
+      engine = "rpart",
+      tree_depth = 20
+    )
+  ),
+  list(
+    "name" = "rand_forest",
+    "model" = rand_forest(
+      mode = "classification"
+    ) %>%
+      set_engine("ranger", importance = "impurity")
+  ),
+  list(
+    "name" = "bart",
+    "model" = bart(
+      mode = "classification",
+      engine = "dbarts",
+      trees = 100
+    )
+  ),
+  list(
+    "name" = "mars",
+    "model" = mars(
+      mode = "classification",
+      engine = "earth",
+    )
+  ),
+  list(
+    "name" = "nn",
+    "model" = mlp(
+      mode = "classification",
+      engine = "nnet",
+      epochs = 100,
+      hidden_units = 8,
+      learn_rate = 0.01
+    )
+  ),
+  list(
+    "name" = "boost_tree",
+    "model" = boost_tree(
+      mode = "classification",
+      engine = "xgboost",
+      trees = 100,
+      tree_depth = 10,
+      min_n = 10,
+      loss_reduction = 0.01,
+      learn_rate = 0.01
+    )
+  ),
+  list(
+    "name" = "lda",
+    "model" = discrim_linear(
+      mode = "classification",
+      engine = "MASS",
+    )
+  )
+)
+
+model_results <- map(models, ~ apply_model_training(
+  .$name,
+  .$model,
+  train,
+  test,
+  "HadHeartAttack"
+))
+```
+
+### Naive Bayes
+
+```{r naive_bayes model}
+modelo_nb <- naiveBayes(HadHeartAttack ~ ., data = train)
+predicciones <- predict(modelo_nb, newdata = test)
+matriz_confusion <- confusionMatrix(predicciones, test$HadHeartAttack)
+
+df_bayes <- data.frame(
+  Name = "naive bayes",
+  Accuracy = matriz_confusion$overall[[1]],
+  Kap = matriz_confusion$overall[[2]]
+)
+```
+
+### Asociation rules
+
+We considered the application of association rules given the categorical nature of most, if not all, variables present in our dataset.  It's important to note that, given the vast amount of variables within our dataset, we're not expecting significant results
+
+```{r transaction}
+transactions <- transactions(data.frame(lapply(df, as.factor)))
+```
+
+```{r apriori bruteforce}
+supp_values <- c(0.3, 0.4)
+conf_values <- c(0.6, 0.7, 0.8, 0.9)
+minlen_values <- c(2, 3)
+
+result_rules <- run_apriori_with_loop(
+  transactions,
+  supp_values,
+  conf_values,
+  minlen_values,
+  verbose = TRUE
+)
+
+result_rules
+
+(best_result <- result_rules[which.max(result_rules$Confidence), ])
+```
+
+```{r best_apriori}
+rules <- apriori(
+  transactions,
+  parameter = list(
+    supp = best_result$Support,
+    conf = best_result$Confidence,
+    minlen = best_result$MinLength
+  ),
+  appearance = list(
+    rhs = c("HadHeartAttack=1", "HadHeartAttack=0")
+  ),
+  control = list(verbose = FALSE)
+)
+```
+
+```{r apriori plots}
+plot(rules, method = "two-key plot")
+plot(rules, method = "graph")
+```
+
+After extracting the best hyper-parameters and searching for association rules, we can observe that we haven't managed to extract enough rules with sufficient confidence.
+
+Out of approximately 2000 non-redundant rules, only 8 of them have a confidence greater than 0.7. Therefore, they are not a reliable indicator either to determine if a patient suffered a heart attack or to identify the risk factors.
+
+### Model results
+
+Once we have all the models, we can compare them to see which one is the best:
+
+```{r}
+df_res <- data.frame(row.names = c("Name", "Accuracy", "Kap"))
+for (result in model_results) {
+  df_res <- rbind(
+    df_res,
+    data.frame(
+      Name = result$name,
+      Accuracy = result$metrics$accuracy,
+      Kap = result$metrics$kap
+    )
+  )
+}
+
+df_res <- rbind(df_res, df_bayes)
+df_res[order(-df_res$Accuracy, decreasing = FALSE), ]
+```
+
+```{r}
+grid.arrange(
+  ggplot(df_res, aes(x = Name, y = Kap, fill = Name)) +
+    geom_bar(stat = "identity") +
+    labs(title = "Kappa Per Model", x = "Model", y = "Kappa") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)),
+  ggplot(df_res, aes(x = Name, y = Accuracy, fill = Name)) +
+    geom_bar(stat = "identity") +
+    labs(title = "Accuracy Per Model", x = "Model", y = "Accuracy") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)),
+  ncol = 2
+)
+```
+
+As we can see, the models have a very similar accuracy and kappa values, making it difficult to choose one over the other. However, we will choose the models that the result of the model can be explained, such as the decision tree, random forest, xgboost, Naive Bayes, logistic regression, multiLayer perceptron, LDA and QDA.
+
+### Model explanation
+
+#### Decision tree
+
+```{r}
+rpart.plot(model_results[[3]]$model$fit, type = 4, extra = 1, roundint = FALSE)
+```
+
+Upon splitting the data using the decision tree, we can appreciate that the most important features are `HadAngina`, `ChestScan`, `AgeCategory`, `HadStroke`, and `LifeDifficulties`.
+
+#### Random forest
+
+```{r}
+tree <- model_results[[4]]$model$fit$variable.importance
+importance <- (tree / sum(tree)) * 100
+
+df_importancia <- data.frame(importance)
+
+ggplot(df_importancia, aes(x = rownames(df_importancia), y = importance, fill = rownames(df_importancia))) +
+  geom_bar(stat = "identity", color = "black") +
+  labs(title = "Variable importance", x = "Variable", y = "Value") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none")
+```
+
+As we can see, the most important variable is `HadAngina` with a big difference from the rest of the variables, nearly atoning to a 25% of overall importance.
+
+#### XGBoost
+
+```{r}
+vip(model_results[[8]]$model$fit)
+```
+
+In this model we can observe that the dominant variable is `hadAngina` with an impressive importance of 60% meanwhile the the second characteristic, `ChestScan`, is less than a 20%.
+
+#### Naive Bayes
+
+```{r}
+freq <- t(data.frame(modelo_nb$tables))
+colnames(freq)[colnames(freq) == "0"] <- "No"
+colnames(freq)[colnames(freq) == "1"] <- "Yes"
+freq <- data.frame(freq)
+
+ggplot(freq, aes(x = rownames(freq), y = Yes, fill = rownames(freq))) +
+  geom_bar(stat = "identity", color = "black") +
+  labs(title = "Naive Bayes Variable importance of `Yes` class", x = "Variable", y = "Value") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "none")
+```
+
+```{r}
+ggplot(freq, aes(x = rownames(freq), y = No, fill = rownames(freq))) +
+  geom_bar(stat = "identity", color = "black") +
+  labs(title = "Naive Bayes Variable importance of `No` class", x = "Variable", y = "Value") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "none")
+```
+
+With this models we have a little of variance between the importance of the variables depending of the predicted target value. In both cases the most dominant characteristic is State being the 'yes' target class more significant, having near a 30% of the overall importance. However variables like Age `AgeCategory` when the `HadHeartAttack` target class is 'yes' the `AgeCategory` has a 5% importance while in the other case the importance of the variables is less than 5%.
+
+#### Linear Regression
+
+```{r}
+coefs <- tidy(model_results[[1]]$model, conf.int = TRUE)
+```
+
+```{r}
+ggplot(coefs, aes(x = reorder(term, estimate), y = estimate, fill = estimate > 0)) +
+  geom_bar(stat = "identity", position = "identity", color = "black") +
+  coord_flip() +
+  labs(
+    title = "Importance Coefficients of Linear Regression",
+    x = "Coefficients",
+    y = "Value"
+  ) +
+  scale_fill_manual(values = c("red", "green")) +
+  theme_minimal()
+```
+
+Observing this plot the most important variables are `HadAngina` with an importance near 50% and `HadStroke` with a 20%
+
+#### MultiLayer Perceptron
+
+```{r}
+coefs <- coef(model_results[[7]]$model$fit)
+coefs_df <- data.frame(term = names(coefs), estimate = coefs)
+
+ggplot(coefs_df, aes(x = reorder(term, estimate), y = estimate, fill = estimate > 0)) +
+  geom_bar(stat = "identity", position = "identity", color = "black") +
+  coord_flip() +
+  labs(
+    title = "Weight Importance per MLP connections",
+    x = "Connections",
+    y = "Weight"
+  ) +
+  scale_fill_manual(values = c("red", "green")) +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 8, hjust = 0.5), axis.text.x = element_blank())
+```
+
+```{r}
+top_coefs <- coefs_df %>%
+  arrange(desc(abs(estimate))) %>%
+  head(10)
+
+ggplot(top_coefs, aes(x = reorder(term, estimate), y = estimate, fill = estimate > 0)) +
+  geom_bar(stat = "identity", position = "identity", color = "black") +
+  labs(
+    title = "Top 10 Coefficients of an MLP by Weight",
+    x = "Connections",
+    y = "Weight"
+  ) +
+  scale_fill_manual(values = c("red", "green")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), axis.title.x = element_blank())
+```
+With the full connections of characteristics proved a difficult task to visualize correctly. As such, we filter significant characteristics to take the 10 most importants.
+
+Even so, this model cannot be interpreted straightforwardly and the demanding nature of them proves a challenge out of bounds of this paper.
+
+#### LDA
+
+```{r}
+coefs_lda <- model_results[[9]]$model$fit
+
+coefs_df <- data.frame(
+  term = rownames(coefs_lda$scaling),
+  estimate = coefs_lda$scaling[, 1] # Tomar solo la primera columna (pueden haber más si hay más clases)
+)
+
+# Crear un gráfico de barras para visualizar los coeficientes
+ggplot(coefs_df, aes(x = reorder(term, estimate), y = estimate, fill = estimate > 0)) +
+  geom_bar(stat = "identity", position = "identity", color = "black") +
+  labs(
+    title = "Linear discriminant analysis Predictors (LDA)",
+    x = "Predictors",
+    y = "Coefficients"
+  ) +
+  scale_fill_manual(values = c("red", "green")) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+    axis.title.x = element_blank()
+  )
+```
+
+```{r}
+df_means_long <- data.frame(t(data.frame(coefs_lda$means)))
+
+ggplot(df_means_long, aes(x = rownames(df_means_long), y = X0, fill = rownames(df_means_long))) +
+  geom_bar(stat = "identity", color = "black") +
+  labs(title = "Valores Medios de Grupo por Variable", x = "Variable", y = "Valor Medio") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "none")
+
+ggplot(df_means_long, aes(x = rownames(df_means_long), y = X1, fill = rownames(df_means_long))) +
+  geom_bar(stat = "identity", color = "black") +
+  labs(title = "Valores Medios de Grupo por Variable", x = "Variable", y = "Valor Medio") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "none")
+```
+
+The result of this model tells us that the dominant variables are `HadAngina` with a coefficient bigger than 1.5, then we have `HadStroke`, `ChestScan` and `Gender` with coefficients near 0.5.
+
+## Making predictions for `HadHeartAttack` missing values
+
+```{r}
+results <- data.frame(
+  "name" = character(),
+  "result" = character()
+)
+
+for (result in model_results) {
+  print(paste("[INFO] Doing...", result$name))
+  pred <- result$model |>
+    predict(heart_attack_target) |>
+    pull(.pred_class)
+
+  results <- rbind(
+    results,
+    data.frame(
+      "name" = result$name,
+      "result" = pred
+    )
+  )
+}
+```
+
+```{r}
+frequency_results <- results %>%
+  group_by(name, result) %>%
+  summarise(frequency = n()) %>%
+  mutate(percentage = (frequency / sum(frequency)) * 100) %>%
+  mutate(result = ifelse(result == 0, "No", "Yes"))
+
+ggplot(frequency_results, aes(x = name, y = percentage, fill = result)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+    title = "Results Ratio per Model and Category",
+    x = "Model", y = "Ratio"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+plot_pie_freq <- function(variable, plot_name) {
+  data <- data.frame(table(variable))
+
+  color_palette <- pals::stepped3(n = length(unique(variable)))
+  ggplot(data, aes(x = "", y = Freq, fill = variable)) +
+    geom_bar(stat = "identity", width = 1) +
+    geom_text(
+      aes(x = 1.6, label = sprintf("%.1f%%", Freq / sum(Freq) * 100)),
+      position = position_stack(vjust = 0.5),
+      size = 4
+    ) +
+    coord_polar(theta = "y") +
+    labs(title = plot_name) +
+    scale_fill_manual(values = color_palette) +
+    theme_void() +
+    theme(
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      plot.title = element_text(hjust = 0.5)
+    )
+}
+```
+
+```{r doktor}
+doktor <- function(observation, models) {
+  predictions <- map( # nolint
+    models, ~ .$model |>
+      predict(observation) |>
+      pull(.pred_class)
+  ) |>
+    unlist()
+
+  return(predictions)
+}
+
+result <- doktor(heart_attack_target[1, ], model_results) %>%
+  tibble(prediction = .) %>%
+  mutate(prediction = ifelse(. == 0, "No", "Yes"))
+
+plot_pie_freq(result$prediction, "Doktor result given one observation")
+```
+
+As such, using the `doktor` function any user or programmer could predict given the transformation pipeline expressed on this paper with a `softmax`-like result.
