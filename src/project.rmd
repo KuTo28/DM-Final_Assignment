@@ -1,8 +1,8 @@
 ## Introduction
 
-The exploration of health-related datasets has emerged as an important endeavor in advancing public health research. This paper aims to explore the Behavioral Risk Factor Surveillance System (BRFSS) dataset, which conducts annual telephone surveys to collect data on the health status of U.S. to detect possible patters that allow us to detect if a patient is at risk to have a heart attack. This research bears significance in contributing to early detection and risk assessment, influencing targeted healthcare interventions.
+The exploration of health-related datasets has emerged as an important endeavor in advancing public health research. This paper aims to explore the Behavioral Risk Factor Surveillance System (BRFSS) dataset, which conducts annual telephone surveys to collect data on the health status of U.S. to detect possible patters that allow us to detect if a patient is at risk to have a heart attack. This research bears significance in contributing to early detection and risk assessment and influencing targeted healthcare interventions.
 
-The original dataset consist of 445132 observations with 40 variables of categorical or numerical nature:
+The original dataset consist of `445132` observations with `40` variables of categorical or numerical nature:
 
 - `State`: State of residence [chr]
 - `Gender`: Gender of Resident [chr: Female, Male]
@@ -137,7 +137,7 @@ plot_pie_freq <- function(variable, plot_name) {
 }
 ```
 
-Functions to make dendrograms.
+Functions to apply clustering.
 
 ```{r hclust helper}
 perform_hclust <- function(data, method, num_clusters) {
@@ -258,8 +258,8 @@ run_apriori_with_loop <- function(transactions, supp_values, conf_values, minlen
   return(result_df)
 }
 ```
-## Setup
 
+## Setup
 ```{r libraries, message=FALSE}
 library(dplyr)
 library(ggplot2)
@@ -302,7 +302,7 @@ Exploring our target variable:
 plot_pie_freq(df$HadHeartAttack, "Heart Attack distribution")
 ```
 
-We can observe that it's quite unbalanced, only `5.7%` of observations present having a heart attack. To solve this class unbalance, we'll employ data [undersampling](https://en.wikipedia.org/wiki/Undersampling) to reduce the amount of observations to the class exhibiting the least frequency; in this case, patients having a heart attack
+We can observe that it's quite unbalanced, only `5.7%` of observations present having a heart attack. To solve this class unbalance, we'll employ data [undersampling](https://en.wikipedia.org/wiki/Undersampling) to reduce the amount of observations to the class exhibiting the least frequency; In this case, patients having a heart attack
 
 ## Raw Data Analysis
 
@@ -379,7 +379,7 @@ ggplot(
   coord_flip()
 ```
 
-In this table we can see the percentages of NA's for each column of the dataset. The column with the highest amount of NA's is `TetanusLast10TDap` `(9.1%)` and the one with the least of amount are `HadDiabetes` and `PhysicalActivities` `(0.12%)`. Because of the different types of variables, we are going to take care of the NA's in different ways.
+In this table we can see the percentages of NA's for each column of the dataset. The column with the highest amount of NA's is `TetanusLast10TDap (9.1%)` and the one with the least of amount are `HadDiabetes` and `PhysicalActivities (0.12%)`. Because of the different types of variables, we are going to take care of the NA's in different ways.
 
 As the amount of NA values is considerable, we'll study the distribution of them per rows to further identify the severity of these missing values:
 
@@ -465,7 +465,7 @@ ggplot(na_count, aes(x = "", y = Freq, fill = num_na, label = sprintf("%.1f%%", 
   )
 ```
 
-As shown by the pie chart above, there are `10.7%` of observations that contain more than 10 NA. These observations could be deemed as impractical for our data analysis due to the extensive data corruption. As such, these could be systematically removed in subsequent stages of the analysis. The decision to remove them instead of manage them is related on the acknowledgment that these observations could mislead the data analysis.
+As shown by the pie chart above, there are `10.7%` of observations that contain more than 5 NA. These observations could be deemed as impractical for our data analysis due to the extensive data corruption. As such, these could be systematically removed in subsequent stages of the analysis. The decision to remove them instead of manage them is related on the acknowledgment that these observations could mislead the data analysis.
 
 ## Data cleanup
 
@@ -514,11 +514,13 @@ df <- df |>
 df |> count(AgeCategory)
 ```
 
-Finally, we can see the distribution of age between the data of the dataset, we can see that there is approximately a `63%` of people older than 50.
+Finally, we can see the distribution of age between the data of the dataset:
 
 ```{r plot age_dist pie}
 plot_pie_freq(df$AgeCategory, "Age distribution")
 ```
+
+We can see that there is approximately a `63%` of people older than 50.
 
 #### Tetanus
 
@@ -589,7 +591,7 @@ In this case we will need to do something with this class as it presents a high 
 
 #### Race
 
-In the case of `RaceEthnicityCategory`, we decided to include the NA's, about 10k observations, in the 'Multiracial' category. This decision aims to help balance the classes, as this category currently only has 8k entries.
+In the case of `RaceEthnicityCategory`, we decided to include the NA's, about 10k observations, in the `Multiracial` category. This decision aims to help balance the classes, as this category currently has 8k entries.
 
 ```{r}
 df <- df |>
@@ -612,11 +614,11 @@ The distribution by race is the following:
 plot_pie_freq(df$RaceEthnicityCategory, "Race distribution")
 ```
 
-As we can see there is the vast majority of people is White making this variable to maybe not be as good as others because of the imbalance.
+As we can see there is the vast majority of people is `White` making this variable to maybe not be as good as others because of the imbalance.
 
 #### Last check-up time
 
-For `LastCheckupTime` we have decided to make our own factorization of the data, we have concluded that there is not a good or logical way to predict the NA's because it doesn't make sense to know if a person has gone to a check up using other variables. This took us to make the decision to make all the NA's part of the category of 5 or more years to try to balance a little bit the classes.
+For `LastCheckupTime` we have decided to make our own factorization of the data, we have concluded that there is not a good or logical way to predict the NA's because it doesn't make sense to know if a person has gone to a check up using other variables. This took us to make the decision to make all the NA's part of the category of 5 or more years to try to balance the classes.
 
 ```{r last_check_time_map}
 df <- df |>
@@ -646,9 +648,9 @@ Even though we have tried to balance the classes we can see that there is a high
 
 #### Removed Teeth
 
-For `RemovedTeeth` we have suposse that if we don't know if any teeth has been removed None of them have been removed.
+For `RemovedTeeth` we have supossed that if we don't know if any teeth has been removed `None` of them have been removed.
 
-```{r}
+```{r removed_teeth}
 df <- df |>
   mutate(
     RemovedTeeth = case_when(
@@ -698,7 +700,7 @@ As we can see there is a `64.1%` of people that sleeps the reccomended amount of
 
 #### Mental and Physical
 
-Mental and Physical health days present values from 0-30. Preliminary observation suggests the existence of three distinct clusters within these variables. To objectively validate this intuition, we'll apply hierarchical clusterization. The next step involves the assignment of semantic labels:
+Mental and Physical health days exhibit values from 0-30. Preliminary observation suggests the existence of three distinct clusters within these variables. To objectively validate this intuition, we'll apply hierarchical clusterization. The next step involves the assignment of semantic labels:
 
 - High
 - Medium
@@ -893,7 +895,7 @@ for (col in bool_cols) {
 
 #### Smoking
 
-Due to the small quantity of values, approximately 3000 'Not Knowns,' we will add these values to the class with fewer data points, in this case, 'Yes,' as illustrated in the pie chart below.
+Due to the small quantity of values, approximately 3000 'Not Known', we will add these values to the class with fewer data points, in this case, 'Yes', as illustrated in the pie chart below.
 
 ```{r smoking_map}
 df <- df |>
@@ -1073,8 +1075,6 @@ ggcorr(
   angle = -45
 )
 ```
-
-!TODO Explain some patters of the correlation matrix that seem interesting for our paper
 
 ```{r BMI_heart_attack_state}
 state_abbreviations <- c("DC", "GU", "PR", "VI")
@@ -1625,47 +1625,25 @@ frequency_results <- results %>%
 ggplot(frequency_results, aes(x = name, y = percentage, fill = result)) +
   geom_bar(stat = "identity", position = "dodge") +
   labs(
-    title = "Results Ratio per Model and Category",
-    x = "Model", y = "Ratio"
+    title = "Entropy per Model and Category",
+    x = "Model", y = "Entropy"
   ) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
-```{r}
-plot_pie_freq <- function(variable, plot_name) {
-  data <- data.frame(table(variable))
-
-  color_palette <- pals::stepped3(n = length(unique(variable)))
-  ggplot(data, aes(x = "", y = Freq, fill = variable)) +
-    geom_bar(stat = "identity", width = 1) +
-    geom_text(
-      aes(x = 1.6, label = sprintf("%.1f%%", Freq / sum(Freq) * 100)),
-      position = position_stack(vjust = 0.5),
-      size = 4
-    ) +
-    coord_polar(theta = "y") +
-    labs(title = plot_name) +
-    scale_fill_manual(values = color_palette) +
-    theme_void() +
-    theme(
-      axis.title.x = element_blank(),
-      axis.title.y = element_blank(),
-      plot.title = element_text(hjust = 0.5)
-    )
-}
-```
-
 ```{r doktor}
 doktor <- function(observation, models) {
-  predictions <- map( # nolint
+  prediction <- map( # nolint
     models, ~ .$model |>
       predict(observation) |>
       pull(.pred_class)
   ) |>
-    unlist()
+    unlist() |>
+    table() |>
+    prop.table()
 
-  return(predictions)
+  return(prediction)
 }
 
 result <- doktor(heart_attack_target[1, ], model_results) %>%
