@@ -1,3 +1,14 @@
+---
+title: "Final Project"
+author: "CLAUDE SHANNON"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
 ## Introduction
 
 The exploration of health-related datasets has emerged as an important endeavor in advancing public health research. This paper aims to explore the Behavioral Risk Factor Surveillance System (BRFSS) dataset, which conducts annual telephone surveys to collect data on the health status of U.S. to detect possible patters that allow us to detect if a patient is at risk to have a heart attack. This research bears significance in contributing to early detection and risk assessment and influencing targeted healthcare interventions.
